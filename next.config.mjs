@@ -30,10 +30,17 @@ const nextConfig = {
     ];
   },
   async rewrites() {
+    // Browser never sees the backend host. Next proxies /api → Docker/internal API.
+    // Dev:  http://127.0.0.1:8000
+    // Prod: http://kr-erp-api:8000  (docker compose service / container name)
+    const internalApi = (process.env.API_INTERNAL_URL || 'http://127.0.0.1:8000').replace(
+      /\/$/,
+      ''
+    );
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        destination: `${internalApi}/api/:path*`,
       },
     ];
   },

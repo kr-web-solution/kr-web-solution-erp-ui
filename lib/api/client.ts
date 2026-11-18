@@ -38,15 +38,12 @@ import {
 } from '../types';
 
 export const getApiBaseUrl = (): string => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  // Same-origin (empty) = browser calls /api/... on workspace.krwebsolution.com;
+  // Next.js rewrites proxy to the Docker container (API_INTERNAL_URL). Never expose backend host.
+  if (typeof process.env.NEXT_PUBLIC_API_URL === 'string') {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
   }
-  if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname || 'localhost';
-    return `${protocol}//${hostname}:8000`;
-  }
-  return 'http://localhost:8000';
+  return '';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

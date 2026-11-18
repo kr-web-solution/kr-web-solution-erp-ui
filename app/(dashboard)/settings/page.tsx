@@ -653,7 +653,7 @@ export default function SettingsCompanyPage() {
                             src={
                               settings.bank_upi_qr_url.startsWith('http')
                                 ? settings.bank_upi_qr_url
-                                : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${settings.bank_upi_qr_url}`
+                                : `${process.env.NEXT_PUBLIC_API_URL || ''}${settings.bank_upi_qr_url}`
                             }
                             alt="UPI QR"
                             className="h-20 w-20 rounded-lg border border-[#E6E8EE] object-contain bg-white"
