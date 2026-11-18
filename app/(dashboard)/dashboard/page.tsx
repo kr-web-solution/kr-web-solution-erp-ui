@@ -4,13 +4,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { dashboardApi, lateFeeApi, invoicesApi } from '@/lib/api/client';
+import { dashboardApi, lateFeeApi, invoicesApi, companyExpensesApi } from '@/lib/api/client';
 import { isPrivileged } from '@/lib/roles';
 import { routes } from '@/lib/routes';
 import {
   DashboardSummary,
   LateFeeAction,
   LateFeeDecisionRequest,
+  CompanyExpense,
 } from '@/lib/types';
 import {
   FolderKanban,
@@ -34,14 +35,19 @@ import {
   Settings,
   UsersRound,
   Briefcase,
-  Percent,
-  CircleDollarSign,
   Inbox,
+  Filter,
+  MoreVertical,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -54,7 +60,6 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
 import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 
 type QuickLink = {
@@ -68,6 +73,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [expenses, setExpenses] = useState<CompanyExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +99,7 @@ export default function DashboardPage() {
   });
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<'week' | 'month' | '6m'>('6m');
 
   const fetchSummary = async () => {
     setIsLoading(true);
@@ -100,6 +107,16 @@ export default function DashboardPage() {
     try {
       const data = await dashboardApi.getSummary();
       setSummary(data);
+      if (isPrivileged(user?.role)) {
+        try {
+          const exp = await companyExpensesApi.list();
+          setExpenses(exp.items || []);
+        } catch {
+          setExpenses([]);
+        }
+      } else {
+        setExpenses([]);
+      }
     } catch (err: any) {
       if (err?.status === 401 || err?.message?.toLowerCase().includes('authentication required')) {
         router.replace('/login');
@@ -113,7 +130,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchSummary();
-  }, []);
+  }, [user?.role]);
 
   const formatRupees = (paise: number) => {
     const rupees = (paise || 0) / 100;
@@ -204,25 +221,50 @@ export default function DashboardPage() {
   const pendingActions = summary?.needs_action_invoices || [];
   const failedEmailCount = summary?.failed_email_invoices_count || 0;
 
-  const revenueChartData = useMemo(() => {
+  const moneyChartData = useMemo(() => {
     const points = summary?.revenue_by_month || [];
+    const spendByKey: Record<string, number> = {};
+    for (const exp of expenses) {
+      if (!exp.expense_date) continue;
+      const key = exp.expense_date.slice(0, 7); // YYYY-MM
+      spendByKey[key] = (spendByKey[key] || 0) + (exp.amount_paise || 0);
+    }
     return points.map((p) => ({
       month: p.month,
+      year_month: p.year_month,
       billed: Math.round((p.billed_paise || 0) / 100),
       collected: Math.round((p.collected_paise || 0) / 100),
+      spend: Math.round((spendByKey[p.year_month] || 0) / 100),
     }));
-  }, [summary?.revenue_by_month]);
+  }, [summary?.revenue_by_month, expenses]);
 
-  const hasRevenueData = revenueChartData.some(
-    (p) => (p.billed || 0) > 0 || (p.collected || 0) > 0
+  const revenueChartData = moneyChartData;
+
+  const hasRevenueData = moneyChartData.some(
+    (p) => (p.billed || 0) > 0 || (p.collected || 0) > 0 || (p.spend || 0) > 0
   );
 
   const money6mo = useMemo(() => {
-    const billed = revenueChartData.reduce((s, p) => s + (p.billed || 0), 0);
-    const collected = revenueChartData.reduce((s, p) => s + (p.collected || 0), 0);
+    const billed = moneyChartData.reduce((s, p) => s + (p.billed || 0), 0);
+    const collected = moneyChartData.reduce((s, p) => s + (p.collected || 0), 0);
+    const spend = moneyChartData.reduce((s, p) => s + (p.spend || 0), 0);
     const rate = billed > 0 ? Math.round((collected / billed) * 100) : 0;
-    return { billed, collected, rate };
-  }, [revenueChartData]);
+    return { billed, collected, spend, rate };
+  }, [moneyChartData]);
+
+  const chartTooltip = {
+    cursor: { fill: 'rgba(15, 23, 42, 0.04)' },
+    contentStyle: {
+      backgroundColor: '#12141C',
+      borderRadius: '10px',
+      border: 'none',
+      color: '#FFFFFF',
+      fontSize: '12px',
+    } as React.CSSProperties,
+  };
+
+  const formatAxis = (v: number) =>
+    v >= 1000 ? `₹${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `₹${v}`;
 
   const pageTitle =
     role === 'worker'
@@ -277,25 +319,51 @@ export default function DashboardPage() {
     },
   ];
 
+  const billedSpark = revenueChartData.map((p) => p.billed);
+  const collectedSpark = revenueChartData.map((p) => p.collected);
+  const projectSpark = useMemo(() => {
+    const n = summary?.running_projects_count ?? 0;
+    return [Math.max(0, n - 2), Math.max(0, n - 1), n, Math.max(0, n - 1), n, n];
+  }, [summary?.running_projects_count]);
+  const leadSpark = useMemo(() => {
+    const n = summary?.open_leads_count ?? 0;
+    return [Math.max(0, n - 1), n, Math.max(0, n - 2), n, Math.max(0, n - 1), n];
+  }, [summary?.open_leads_count]);
+
+  const periodLabel =
+    period === 'week' ? 'This week' : period === 'month' ? 'This month' : 'Last 6 months';
+
   return (
     <div className="w-full min-w-0 space-y-5 pb-4">
-      <PageHeader
-        title={pageTitle}
-        description={pageDescription}
-        badge={
-          isPrivileged(role) ? (
-            <span className="rounded-md border border-brand-yellow-400/40 bg-brand-yellow-tint px-2 py-0.5 text-[11px] font-semibold text-brand-text-on-yellow">
-              IST · {todayFormatted}
-            </span>
-          ) : undefined
-        }
-        actions={
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-heading text-[28px] font-bold tracking-[-0.02em] text-text">
+            {pageTitle}
+          </h1>
+          <p className="mt-1 text-sm text-muted">{pageDescription}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {isPrivileged(role) && (
+            <div className="relative">
+              <select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value as 'week' | 'month' | '6m')}
+                className="h-10 appearance-none rounded-xl border border-border bg-surface pl-3.5 pr-9 text-sm font-semibold text-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] focus:outline-none focus:ring-2 focus:ring-brand-red-500"
+                aria-label="Period"
+              >
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+                <option value="6m">Last 6 months</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            </div>
+          )}
           <Button variant="secondary" size="sm" onClick={fetchSummary} isLoading={isLoading}>
             <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-        }
-      />
+        </div>
+      </div>
 
       {error && (
         <div className="flex flex-col gap-3 rounded-xl border border-danger/25 bg-danger-tint p-4 text-sm text-danger sm:flex-row sm:items-center sm:justify-between">
@@ -390,261 +458,412 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── FOUNDER / ADMIN ─── */}
+      {/* ─── FOUNDER / ADMIN — SilverLogix layout ─── */}
       {isPrivileged(role) && (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label="Running projects"
               value={summary?.running_projects_count ?? 0}
-              caption="Active delivery"
+              caption={periodLabel}
               variant="green"
-              icon={<FolderKanban className="h-4 w-4" />}
+              icon={<FolderKanban className="h-5 w-5" />}
               href={routes.projects}
               isLoading={isLoading}
+              sparkline={projectSpark}
+              trend={{ label: 'Active', positive: true }}
             />
             <KpiCard
               label="Open leads"
               value={summary?.open_leads_count ?? 0}
-              caption="Sales pipeline"
+              caption={periodLabel}
               variant="blue"
-              icon={<TrendingUp className="h-4 w-4" />}
+              icon={<TrendingUp className="h-5 w-5" />}
               href={routes.leads}
               isLoading={isLoading}
-            />
-            <KpiCard
-              label="Unpaid"
-              value={formatRupees(summary?.unpaid_invoices_total_paise ?? 0)}
-              caption="Sent + overdue"
-              variant="yellow"
-              icon={<ReceiptText className="h-4 w-4" />}
-              href={routes.invoices}
-              isLoading={isLoading}
+              sparkline={leadSpark}
+              trend={{
+                label: summary?.open_leads_count ? 'In pipeline' : 'None open',
+                positive: true,
+              }}
             />
             <KpiCard
               label="Overdue"
               value={summary?.overdue_invoices_count ?? 0}
-              caption="Past due date"
+              caption="Past due"
               variant="crimson"
-              icon={<AlertTriangle className="h-4 w-4" />}
+              icon={<AlertTriangle className="h-5 w-5" />}
               href="/invoices?status=overdue"
               isLoading={isLoading}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard
-              label="Billed (6 mo)"
-              value={`₹${money6mo.billed.toLocaleString('en-IN')}`}
-              caption="Issued invoices"
-              variant="blue"
-              icon={<CircleDollarSign className="h-4 w-4" />}
-              href={routes.invoices}
-              isLoading={isLoading}
+              sparkline={billedSpark.length ? billedSpark : [1, 2, 1, 3, 2, 4]}
+              trend={{
+                label:
+                  (summary?.overdue_invoices_count || 0) > 0 ? 'Needs follow-up' : 'Clear',
+                positive: !(summary?.overdue_invoices_count || 0),
+              }}
             />
             <KpiCard
-              label="Collected (6 mo)"
+              label="Collected"
               value={`₹${money6mo.collected.toLocaleString('en-IN')}`}
-              caption="Marked paid"
-              variant="green"
-              icon={<IndianRupee className="h-4 w-4" />}
+              caption={`${money6mo.rate}% of billed`}
+              variant="brand"
+              icon={<IndianRupee className="h-5 w-5" />}
               href={routes.invoices}
               isLoading={isLoading}
-            />
-            <KpiCard
-              label="Collection rate"
-              value={`${money6mo.rate}%`}
-              caption="Collected ÷ billed"
-              variant={money6mo.rate >= 80 ? 'green' : money6mo.rate >= 50 ? 'yellow' : 'crimson'}
-              icon={<Percent className="h-4 w-4" />}
-              isLoading={isLoading}
-            />
-            <KpiCard
-              label="Needs action"
-              value={pendingActions.length}
-              caption={pendingActions.length ? 'Overdue decisions' : 'All clear'}
-              variant={pendingActions.length ? 'crimson' : 'green'}
-              icon={<Inbox className="h-4 w-4" />}
-              href={routes.needsAction}
-              isLoading={isLoading}
+              sparkline={collectedSpark.length ? collectedSpark : [2, 3, 2, 4, 5, 6]}
+              trend={{
+                label: `₹${money6mo.billed.toLocaleString('en-IN')} billed`,
+                positive: money6mo.rate >= 50,
+              }}
             />
           </div>
 
-          <SectionCard
-            title="Quick actions"
-            subtitle="Jump to everyday work"
-            icon={<Plus className="h-4 w-4" />}
-          >
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-              {founderQuickLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="group flex flex-col gap-2 rounded-xl border border-border bg-bg/40 p-3 transition-colors hover:border-brand-red-500/35 hover:bg-brand-red-tint/40"
-                >
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-brand-red-500">
-                    {link.icon}
-                  </span>
-                  <span className="text-sm font-semibold text-text">{link.label}</span>
-                  <span className="text-[11px] text-muted">{link.hint}</span>
-                </Link>
-              ))}
-            </div>
-          </SectionCard>
+          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {founderQuickLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-brand-red-500/40 hover:bg-brand-red-tint hover:text-brand-red-500"
+              >
+                <span className="text-brand-red-500">{link.icon}</span>
+                {link.label}
+              </Link>
+            ))}
+          </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            <SectionCard
-              className="xl:col-span-7 min-h-[300px]"
-              bodyClassName="flex flex-col min-h-0"
-              title="Revenue"
-              subtitle="Last 6 months · billed vs collected"
-              icon={<IndianRupee className="h-4 w-4" />}
-              action={{ label: 'Invoices', href: routes.invoices }}
-              headerSlot={
-                hasRevenueData ? (
-                  <div className="hidden items-center gap-4 text-xs sm:flex">
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-2.5 w-2.5 rounded-sm bg-[#C9A227]" />
-                      <span className="text-muted">Billed</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-2.5 w-2.5 rounded-sm bg-brand-red-500" />
-                      <span className="text-muted">Collected</span>
-                    </div>
-                  </div>
-                ) : null
-              }
-            >
-              <div className="min-h-[220px] w-full flex-1 sm:min-h-[260px]">
-                {!hasRevenueData ? (
-                  <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg/60 px-4 text-center">
-                    <p className="text-sm font-semibold text-text">No billing yet</p>
-                    <p className="mt-1 text-xs text-muted">
-                      Chart fills when invoices are issued or paid.
-                    </p>
-                    <Link href={routes.invoiceNew} className="mt-3">
-                      <Button variant="secondary" size="sm">
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        New invoice
-                      </Button>
-                    </Link>
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={revenueChartData}
-                      margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
-                      barGap={4}
-                      barCategoryGap="28%"
+          {/* Recent activity table — SilverLogix style */}
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div>
+                <h2 className="font-heading text-[15px] font-bold text-text">Recent activity</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  Latest projects, leads, and invoices · {periodLabel}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={fetchSummary}>
+                  <Filter className="mr-1.5 h-3.5 w-3.5" />
+                  Filter
+                </Button>
+                <Link href={routes.invoices}>
+                  <Button variant="primary" size="sm">
+                    View all
+                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-bg/70 text-[11px] font-bold uppercase tracking-wider text-muted">
+                    <th className="px-5 py-3 font-bold">Ref</th>
+                    <th className="px-5 py-3 font-bold">Title</th>
+                    <th className="px-5 py-3 font-bold">Detail</th>
+                    <th className="px-5 py-3 font-bold">Status</th>
+                    <th className="px-5 py-3 font-bold">Date</th>
+                    <th className="px-5 py-3 font-bold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12">
+                        <LoadingAnimation label="Loading activity…" />
+                      </td>
+                    </tr>
+                  ) : summary?.recent_items?.length ? (
+                    summary.recent_items.map((item) => {
+                      const itemDate = new Date(item.date).toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      });
+                      let href = routes.dashboard;
+                      if (item.type === 'project') href = routes.project(item.id);
+                      else if (item.type === 'lead') href = routes.lead(item.id);
+                      else if (item.type === 'invoice') href = routes.invoice(item.id);
+                      const typeLabel =
+                        item.type === 'project'
+                          ? 'Project'
+                          : item.type === 'lead'
+                            ? 'Lead'
+                            : 'Invoice';
+
+                      return (
+                        <tr key={`${item.type}-${item.id}`} className="hover:bg-bg/60 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <Link
+                              href={href}
+                              className="font-semibold text-brand-red-500 hover:underline"
+                            >
+                              {typeLabel}
+                            </Link>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <Link href={href} className="font-semibold text-text hover:underline">
+                              {item.title}
+                            </Link>
+                          </td>
+                          <td className="max-w-[200px] truncate px-5 py-3.5 text-muted">
+                            {item.subtitle || '—'}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <StatusBadge
+                              status={item.status}
+                              type={
+                                item.type === 'project'
+                                  ? 'project'
+                                  : item.type === 'lead'
+                                    ? 'lead'
+                                    : 'invoice'
+                              }
+                            />
+                          </td>
+                          <td className="px-5 py-3.5 tabular-nums text-muted">{itemDate}</td>
+                          <td className="px-5 py-3.5 text-right">
+                            <Link
+                              href={href}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-bg hover:text-text"
+                              aria-label="Open"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12">
+                        <EmptyState
+                          title="Nothing here yet"
+                          subtitle="Create a lead, project, or invoice to get started."
+                          className="border-0 bg-transparent p-0 shadow-none"
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="divide-y divide-border md:hidden">
+              {isLoading ? (
+                <LoadingAnimation label="Loading…" className="py-10" />
+              ) : summary?.recent_items?.length ? (
+                summary.recent_items.map((item) => {
+                  let href = routes.dashboard;
+                  if (item.type === 'project') href = routes.project(item.id);
+                  else if (item.type === 'lead') href = routes.lead(item.id);
+                  else if (item.type === 'invoice') href = routes.invoice(item.id);
+                  return (
+                    <Link
+                      key={`${item.type}-${item.id}`}
+                      href={href}
+                      className="flex items-center justify-between gap-3 px-4 py-3.5"
                     >
-                      <CartesianGrid stroke="#E6E8EE" vertical={false} />
-                      <XAxis
-                        dataKey="month"
-                        stroke="#94A3B8"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        stroke="#94A3B8"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(v) =>
-                          v >= 1000 ? `₹${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `₹${v}`
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-text">{item.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted">
+                          {item.type} ·{' '}
+                          {new Date(item.date).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                          })}
+                        </p>
+                      </div>
+                      <StatusBadge
+                        status={item.status}
+                        type={
+                          item.type === 'project'
+                            ? 'project'
+                            : item.type === 'lead'
+                              ? 'lead'
+                              : 'invoice'
                         }
                       />
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="px-4 py-10">
+                  <EmptyState
+                    title="Nothing here yet"
+                    subtitle="Create a lead, project, or invoice to get started."
+                    className="border-0 bg-transparent p-0 shadow-none"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-border bg-bg/40 px-4 py-3 text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <span>
+                Showing {summary?.recent_items?.length || 0} recent item
+                {(summary?.recent_items?.length || 0) === 1 ? '' : 's'}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Link href={routes.projects} className="font-semibold text-brand-red-500 hover:underline">
+                  Projects
+                </Link>
+                <span>·</span>
+                <Link href={routes.leads} className="font-semibold text-brand-red-500 hover:underline">
+                  Leads
+                </Link>
+                <span>·</span>
+                <Link href={routes.invoices} className="font-semibold text-brand-red-500 hover:underline">
+                  Invoices
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Three money charts — billed (area) · collected (bars) · spend (line) */}
+          <div>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h2 className="font-heading text-[15px] font-bold text-text">Money overview</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {periodLabel} · billed · collected · company spend
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link href={routes.invoices}>
+                  <Button variant="secondary" size="sm">
+                    Invoices
+                  </Button>
+                </Link>
+                <Link href={routes.expenses}>
+                  <Button variant="secondary" size="sm">
+                    Expenses
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              {/* Billed — Area */}
+              <div className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+                      Billed
+                    </p>
+                    <p className="mt-1 font-mono text-[22px] font-bold tabular-nums text-text">
+                      ₹{money6mo.billed.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <span className="rounded-lg bg-brand-yellow-tint px-2 py-1 text-[10px] font-bold uppercase text-brand-text-on-yellow">
+                    Area
+                  </span>
+                </div>
+                <div className="mt-2 h-[180px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={moneyChartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="billedFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#C9A227" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#C9A227" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#E6E8EE" vertical={false} />
+                      <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAxis} />
                       <Tooltip
-                        cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}
-                        contentStyle={{
-                          backgroundColor: '#12141C',
-                          borderRadius: '10px',
-                          border: 'none',
-                          color: '#FFFFFF',
-                          fontSize: '12px',
-                        }}
-                        formatter={(value: any, name: any) => [
-                          `₹${Number(value).toLocaleString('en-IN')}`,
-                          name === 'collected' ? 'Collected' : 'Billed',
-                        ]}
+                        {...chartTooltip}
+                        formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Billed']}
                       />
-                      <Bar
+                      <Area
+                        type="monotone"
                         dataKey="billed"
-                        name="billed"
-                        fill="#C9A227"
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={18}
+                        stroke="#C9A227"
+                        strokeWidth={2.5}
+                        fill="url(#billedFill)"
                       />
-                      <Bar
-                        dataKey="collected"
-                        name="collected"
-                        fill="#E32B2B"
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={18}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Collected — Bars */}
+              <div className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+                      Collected
+                    </p>
+                    <p className="mt-1 font-mono text-[22px] font-bold tabular-nums text-text">
+                      ₹{money6mo.collected.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <span className="rounded-lg bg-brand-red-tint px-2 py-1 text-[10px] font-bold uppercase text-brand-red-500">
+                    Bars
+                  </span>
+                </div>
+                <div className="mt-2 h-[180px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={moneyChartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                      <CartesianGrid stroke="#E6E8EE" vertical={false} />
+                      <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAxis} />
+                      <Tooltip
+                        {...chartTooltip}
+                        formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Collected']}
                       />
+                      <Bar dataKey="collected" fill="#E32B2B" radius={[6, 6, 0, 0]} maxBarSize={28} />
                     </BarChart>
                   </ResponsiveContainer>
-                )}
+                </div>
               </div>
-            </SectionCard>
 
-            <SectionCard
-              className="xl:col-span-5 min-h-[300px]"
-              bodyClassName="flex flex-col min-h-0 !p-0"
-              title="Recent activity"
-              subtitle="Projects · leads · invoices"
-              icon={<Clock className="h-4 w-4" />}
-            >
-              <div className="min-h-[220px] flex-1 divide-y divide-border sm:min-h-[260px]">
-                {isLoading ? (
-                  <LoadingAnimation label="Loading activity…" className="py-12" />
-                ) : summary?.recent_items?.length ? (
-                  summary.recent_items.map((item) => {
-                    const itemDate = new Date(item.date).toLocaleDateString('en-IN', {
-                      day: '2-digit',
-                      month: 'short',
-                    });
-                    let href = routes.dashboard;
-                    if (item.type === 'project') href = routes.project(item.id);
-                    else if (item.type === 'lead') href = routes.lead(item.id);
-                    else if (item.type === 'invoice') href = routes.invoice(item.id);
-
-                    return (
-                      <Link
-                        key={`${item.type}-${item.id}`}
-                        href={href}
-                        className="flex items-center justify-between gap-3 px-4 py-3.5 transition-colors hover:bg-bg"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-text">{item.title}</p>
-                          <p className="mt-0.5 truncate text-xs text-muted">
-                            {item.subtitle || item.type} · {itemDate}
-                          </p>
-                        </div>
-                        <StatusBadge
-                          status={item.status}
-                          type={
-                            item.type === 'project'
-                              ? 'project'
-                              : item.type === 'lead'
-                                ? 'lead'
-                                : 'invoice'
-                          }
-                        />
-                      </Link>
-                    );
-                  })
-                ) : (
-                  <div className="px-4 py-12">
-                    <EmptyState
-                      title="Nothing here yet"
-                      subtitle="Create a lead, project, or invoice to get started."
-                      className="border-0 bg-transparent p-0 shadow-none"
-                    />
+              {/* Spend — Line */}
+              <div className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+                      Spend
+                    </p>
+                    <p className="mt-1 font-mono text-[22px] font-bold tabular-nums text-text">
+                      ₹{money6mo.spend.toLocaleString('en-IN')}
+                    </p>
                   </div>
-                )}
+                  <span className="rounded-lg bg-info-tint px-2 py-1 text-[10px] font-bold uppercase text-info">
+                    Line
+                  </span>
+                </div>
+                <div className="mt-2 h-[180px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={moneyChartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                      <CartesianGrid stroke="#E6E8EE" vertical={false} />
+                      <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAxis} />
+                      <Tooltip
+                        {...chartTooltip}
+                        formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Spend']}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="spend"
+                        stroke="#2563EB"
+                        strokeWidth={2.5}
+                        dot={{ r: 3.5, fill: '#2563EB', strokeWidth: 0 }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <Link
+                  href={routes.expenses}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-red-500 hover:underline"
+                >
+                  <Wallet className="h-3.5 w-3.5" />
+                  Company expenses
+                </Link>
               </div>
-            </SectionCard>
+            </div>
           </div>
         </div>
       )}

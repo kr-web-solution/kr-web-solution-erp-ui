@@ -10,6 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (credentials: { email: string; password: string }) => Promise<User>;
+  loginWithGoogle: (idToken: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
 }
@@ -68,6 +69,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginWithGoogle = async (idToken: string): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.loginWithGoogle(idToken);
+      setUser(res.user);
+      router.replace(homeFor(res.user.role));
+      return res.user;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     setIsLoading(true);
     try {
@@ -88,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        loginWithGoogle,
         logout,
         refreshUser,
       }}

@@ -111,7 +111,9 @@ export async function apiClient<T>(
   const response = await fetch(url, config);
 
   if (!response.ok) {
-    if (response.status === 401) {
+    const isAuthAttempt =
+      endpoint.includes('/auth/login') || endpoint.includes('/auth/google');
+    if (response.status === 401 && !isAuthAttempt) {
       setAuthToken(null);
       if (
         typeof window !== 'undefined' &&
@@ -152,6 +154,17 @@ export const authApi = {
     const res = await apiClient<{ access_token: string; token_type: string; user: User }>(
       '/api/v1/auth/login',
       { method: 'POST', body: JSON.stringify(credentials) }
+    );
+    if (res?.access_token) {
+      setAuthToken(res.access_token);
+    }
+    return res;
+  },
+
+  loginWithGoogle: async (idToken: string) => {
+    const res = await apiClient<{ access_token: string; token_type: string; user: User }>(
+      '/api/v1/auth/google',
+      { method: 'POST', body: JSON.stringify({ id_token: idToken }) }
     );
     if (res?.access_token) {
       setAuthToken(res.access_token);

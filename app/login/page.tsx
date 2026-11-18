@@ -5,14 +5,31 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+
+const GOOGLE_ENABLED = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const mapAuthError = (err: any) => {
+    const msg = (err?.message || '').toLowerCase();
+    if (msg.includes('inactive') || msg.includes('deactivated')) {
+      return 'This account has been deactivated. Please contact your founder administrator.';
+    }
+    if (msg.includes('no kr workspace account') || msg.includes('invite')) {
+      return 'No KR Workspace account for this Google email. Ask a founder to invite you first.';
+    }
+    if (msg.includes('google')) {
+      return err?.message || 'Google sign-in failed. Try again or use email and password.';
+    }
+    return err?.message || 'Invalid email or password. Please check your credentials.';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,12 +39,19 @@ export default function LoginPage() {
     try {
       await login({ email, password });
     } catch (err: any) {
-      if (err?.message?.toLowerCase().includes('inactive') || err?.message?.toLowerCase().includes('deactivated')) {
-        setError('This account has been deactivated. Please contact your founder administrator.');
-      } else {
-        setError(err?.message || 'Invalid email or password. Please check your credentials.');
-      }
+      setError(mapAuthError(err));
     } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogle = async (idToken: string) => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await loginWithGoogle(idToken);
+    } catch (err: any) {
+      setError(mapAuthError(err));
       setIsSubmitting(false);
     }
   };
@@ -36,7 +60,6 @@ export default function LoginPage() {
     <div className="min-h-screen w-full flex bg-white select-none">
       {/* Left: Dark Brand Panel (ink-900, hidden below md) */}
       <div className="hidden md:flex md:w-1/2 lg:w-5/12 bg-[#12141C] text-white p-12 lg:p-16 flex-col justify-between relative overflow-hidden border-r border-[#272B38]">
-        {/* Background Geometric Diamond Chevrons Motif */}
         <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden">
           <svg
             className="w-full h-full"
@@ -62,7 +85,6 @@ export default function LoginPage() {
           </svg>
         </div>
 
-        {/* Top: Logo Tile */}
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md">
             <img
@@ -84,7 +106,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Center: Value Proposition */}
         <div className="relative z-10 space-y-8 my-auto py-12">
           <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight font-heading">
             Run KR Web Solution from one workspace
@@ -114,16 +135,14 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Bottom: Legal Footer */}
         <div className="relative z-10 text-xs text-[#64748B]">
           © {new Date().getFullYear()} KR Web Solution • Salem HQ, Tamil Nadu
         </div>
       </div>
 
-      {/* Right: Clean Auth Form (white) */}
+      {/* Right: Auth Form */}
       <div className="w-full md:w-1/2 lg:w-7/12 flex items-center justify-center p-6 sm:p-12 lg:p-16">
         <div className="w-full max-w-md space-y-8">
-          {/* Mobile Header */}
           <div className="md:hidden flex items-center gap-3 mb-6">
             <div className="w-9 h-9 rounded-xl bg-[#12141C] p-1 flex items-center justify-center">
               <img
@@ -148,11 +167,10 @@ export default function LoginPage() {
               Welcome back
             </h1>
             <p className="text-sm text-[#64748B] mt-1">
-              Sign in to your KR Workspace account
+              Sign in with Google or your email and password
             </p>
           </div>
 
-          {/* Error Banner (crimson tint) */}
           {error && (
             <div className="p-3.5 bg-[#FDECEC] border border-[#B91C1C]/25 rounded-[10px] flex items-start gap-2.5 text-xs text-[#B91C1C] animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -160,7 +178,27 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Form */}
+          {GOOGLE_ENABLED && (
+            <div className="space-y-4">
+              <GoogleSignInButton
+                onCredential={handleGoogle}
+                onError={(msg) => {
+                  setError(msg);
+                  setIsSubmitting(false);
+                }}
+                disabled={isSubmitting}
+              />
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-[#E6E8EE]" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-3 text-[#94A3B8] font-medium">or continue with email</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
@@ -171,7 +209,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
-                  autoFocus
+                  autoFocus={!GOOGLE_ENABLED}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@krwebsolution.com"
@@ -224,7 +262,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Security note */}
           <div className="pt-4 border-t border-[#E6E8EE] text-center text-xs text-[#94A3B8] flex items-center justify-center gap-1.5">
             <Shield className="w-3.5 h-3.5 text-[#16A34A]" />
             <span>Encrypted session with secure httpOnly cookie</span>
