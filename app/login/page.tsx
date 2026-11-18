@@ -91,16 +91,16 @@ export default function LoginPage() {
     if (msg.includes('no kr workspace account') || msg.includes('invite you first')) {
       return 'No KR Workspace account for this email. Ask an admin to invite you first.';
     }
-    if (msg.includes('incorrect email') || msg.includes('incorrect password') || msg.includes('401')) {
-      return 'Invalid email or password. Please check your credentials.';
-    }
     if (msg.includes('google')) {
       return err?.message || 'Google sign-in failed. Try again or use email and password.';
     }
     if (msg.includes('microsoft')) {
       return err?.message || 'Microsoft sign-in failed. Try again or use email and password.';
     }
-    return err?.message || 'Invalid email or password. Please check your credentials.';
+    if (msg.includes('incorrect email') || msg.includes('incorrect password')) {
+      return 'Invalid email or password. Please check your credentials.';
+    }
+    return err?.message || 'Sign-in failed. Please try again.';
   };
 
   const runAuth = async (action: () => Promise<unknown>) => {
