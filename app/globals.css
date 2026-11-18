@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-red-500: #E32B2B;
+  --color-brand-red-hover: #C81F26;
+  --color-brand-red-active: #A8171E;
+  --color-brand-red-tint: #FFF1F0;
+  --color-brand-logo-red: #FF3330;
+
+  --color-brand-yellow-400: #FADC59;
+  --color-brand-yellow-hover: #F5D23E;
+  --color-brand-yellow-tint: #FEF6D8;
+  --color-brand-text-on-yellow: #5B4300;
+
+  --color-ink-900: #12141C;
+  --color-ink-800: #1D202B;
+  --color-ink-700: #272B38;
+
+  --color-bg: #F6F7F9;
+  --color-surface: #FFFFFF;
+  --color-border: #E6E8EE;
+  --color-text: #0F172A;
+  --color-muted: #64748B;
+  --color-subtle: #94A3B8;
+
+  --color-success: #16A34A;
+  --color-success-tint: #E8F7EE;
+  --color-info: #2563EB;
+  --color-info-tint: #E8F0FE;
+  --color-danger: #B91C1C;
+  --color-danger-tint: #FDECEC;
+  --color-violet: #7C3AED;
+  --color-violet-tint: #F1EAFE;
+  --color-neutral: #EEF1F5;
+
+  --font-sans: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: var(--font-heading), 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Density 8 spacing scale (KR Flat Ops) */
+  --spacing-ops-1: 8px;
+  --spacing-ops-2: 12px;
+  --spacing-ops-3: 16px;
+  --spacing-ops-4: 20px;
+  --spacing-ops-5: 24px;
+  --spacing-ops-6: 32px;
+}
+
+@layer base {
+  :root {
+    --bg: #F6F7F9;
+    --surface: #FFFFFF;
+    --border: #E6E8EE;
+    --text: #0F172A;
+    --muted: #64748B;
+    --subtle: #94A3B8;
+    --brand: #E32B2B;
+    --accent: #FADC59;
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: 0em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    color: var(--color-text);
+  }
+
+  h1 {
+    font-size: clamp(22px, 4vw, 28px);
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: 18px;
+    line-height: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  h3 {
+    font-size: 15px;
+    line-height: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-red-500);
+    outline-offset: 2px;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Flat ops surfaces — no glass / heavy shadow */
+  .ops-surface {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+  }
+
+  .ops-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    min-height: 100%;
+    padding-bottom: 8px;
+  }
+
+  .ops-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-brand-red-500);
+  }
+
+  .ops-column-wash {
+    background-color: color-mix(in srgb, var(--color-brand-yellow-tint) 45%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-brand-yellow-400) 45%, var(--color-border));
+  }
+
+  .ops-progress {
+    height: 4px;
+    width: 100%;
+    border-radius: 9999px;
+    background-color: var(--color-neutral);
+    overflow: hidden;
+  }
+
+  .ops-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: 9999px;
+    background-color: var(--color-brand-red-500);
+  }
+}
+
+/* Custom subtle 6px scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D0D5DD;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #98A2B3;
+}
+
+.skip-to-content {
+  position: absolute;
+  top: -9999px;
+  left: 1rem;
+  z-index: 100;
+  background-color: #12141C;
+  color: #FFFFFF;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.skip-to-content:focus {
+  top: 1rem;
+}
