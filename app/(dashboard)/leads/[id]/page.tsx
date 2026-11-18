@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 const STAGES: { key: LeadStatus; label: string }[] = [
@@ -162,7 +162,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   if (isLoading) {
-    return <LoadingAnimation fullPage label="Loading lead…" />;
+    return <PageSkeleton variant="detail" />;
   }
 
   if (error || !lead) {

@@ -1,273 +1,359 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Shield } from 'lucide-react';
+import { authApi } from '@/lib/api/client';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { MicrosoftSignInButton } from '@/components/auth/MicrosoftSignInButton';
 
-const GOOGLE_ENABLED = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+type OAuthConfig = {
+  googleClientId: string;
+  microsoftClientId: string;
+  microsoftTenantId: string;
+};
+
+type AuthPhase = 'idle' | 'submitting' | 'redirecting';
+
+function oauthHint(cfg: OAuthConfig | null) {
+  const google = Boolean(cfg?.googleClientId);
+  const microsoft = Boolean(cfg?.microsoftClientId);
+  if (google && microsoft) return 'Continue with Google, Microsoft, or email';
+  if (google) return 'Continue with Google or email';
+  if (microsoft) return 'Continue with Microsoft or email';
+  return 'Use the email and password from your invite';
+}
+
+const fieldClass =
+  'w-full h-12 pl-11 pr-4 rounded-xl bg-white border border-[#E6E8EE] text-[15px] text-[#0F172A] placeholder:text-[#94A3B8] transition-[border-color,box-shadow,transform] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E32B2B]/35 focus-visible:border-[#E32B2B] autofill:shadow-[inset_0_0_0_1000px_white]';
 
 export default function LoginPage() {
-  const { login, loginWithGoogle } = useAuth();
+  const router = useRouter();
+  const { login, loginWithGoogle, loginWithMicrosoft, user, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<AuthPhase>('idle');
+  const [oauth, setOauth] = useState<OAuthConfig | null>(null);
+
+  useEffect(() => {
+    router.prefetch('/dashboard');
+    router.prefetch('/onboarding/profile');
+    router.prefetch('/staff/me');
+  }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await authApi.oauthProviders();
+        if (cancelled) return;
+        setOauth({
+          googleClientId: (cfg.google_client_id || '').trim(),
+          microsoftClientId: (cfg.microsoft_client_id || '').trim(),
+          microsoftTenantId: (cfg.microsoft_tenant_id || 'common').trim() || 'common',
+        });
+      } catch {
+        if (!cancelled) {
+          setOauth({ googleClientId: '', microsoftClientId: '', microsoftTenantId: 'common' });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // If session already exists (or login just set user), show redirect shell instead of stuck spinner
+  useEffect(() => {
+    if (!isLoading && user) {
+      setPhase('redirecting');
+    }
+  }, [isLoading, user]);
+
+  const googleEnabled = Boolean(oauth?.googleClientId);
+  const microsoftEnabled = Boolean(oauth?.microsoftClientId);
+  const oauthEnabled = googleEnabled || microsoftEnabled;
+  const busy = phase !== 'idle';
 
   const mapAuthError = (err: any) => {
     const msg = (err?.message || '').toLowerCase();
     if (msg.includes('inactive') || msg.includes('deactivated')) {
-      return 'This account has been deactivated. Please contact your founder administrator.';
+      return 'This account has been deactivated. Please contact your administrator.';
     }
-    if (msg.includes('no kr workspace account') || msg.includes('invite')) {
-      return 'No KR Workspace account for this Google email. Ask a founder to invite you first.';
+    if (msg.includes('set your password') || msg.includes('invite link')) {
+      return 'Please set your password using the invite link sent to your email.';
+    }
+    if (msg.includes('no kr workspace account') || msg.includes('invite you first')) {
+      return 'No KR Workspace account for this email. Ask an admin to invite you first.';
+    }
+    if (msg.includes('incorrect email') || msg.includes('incorrect password') || msg.includes('401')) {
+      return 'Invalid email or password. Please check your credentials.';
     }
     if (msg.includes('google')) {
       return err?.message || 'Google sign-in failed. Try again or use email and password.';
     }
+    if (msg.includes('microsoft')) {
+      return err?.message || 'Microsoft sign-in failed. Try again or use email and password.';
+    }
     return err?.message || 'Invalid email or password. Please check your credentials.';
+  };
+
+  const runAuth = async (action: () => Promise<unknown>) => {
+    setError(null);
+    setPhase('submitting');
+    try {
+      await action();
+      setPhase('redirecting');
+    } catch (err: any) {
+      setPhase('idle');
+      setError(mapAuthError(err));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      await login({ email, password });
-    } catch (err: any) {
-      setError(mapAuthError(err));
-    } finally {
-      setIsSubmitting(false);
-    }
+    await runAuth(() => login({ email, password }));
   };
 
   const handleGoogle = async (idToken: string) => {
-    setError(null);
-    setIsSubmitting(true);
-    try {
-      await loginWithGoogle(idToken);
-    } catch (err: any) {
-      setError(mapAuthError(err));
-      setIsSubmitting(false);
-    }
+    await runAuth(() => loginWithGoogle(idToken));
+  };
+
+  const handleMicrosoft = async (idToken: string) => {
+    await runAuth(() => loginWithMicrosoft(idToken));
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-white select-none">
-      {/* Left: Dark Brand Panel (ink-900, hidden below md) */}
-      <div className="hidden md:flex md:w-1/2 lg:w-5/12 bg-[#12141C] text-white p-12 lg:p-16 flex-col justify-between relative overflow-hidden border-r border-[#272B38]">
-        <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden">
-          <svg
-            className="w-full h-full"
-            viewBox="0 0 600 600"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <polygon
-              points="300,50 550,300 300,550 50,300"
-              stroke="#E32B2B"
-              strokeWidth="16"
-            />
-            <polygon
-              points="300,120 480,300 300,480 120,300"
-              stroke="#FADC59"
-              strokeWidth="12"
-            />
-            <polygon
-              points="300,190 410,300 300,410 190,300"
-              stroke="#E32B2B"
-              strokeWidth="8"
-            />
-          </svg>
-        </div>
+    <div className="relative min-h-screen w-full overflow-hidden bg-[#0B0D14] text-white select-none">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 login-bg-breathe"
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 60% at 18% 40%, rgba(227,43,43,0.22), transparent 55%), radial-gradient(ellipse 70% 50% at 85% 15%, rgba(250,220,89,0.12), transparent 50%), linear-gradient(160deg, #0B0D14 0%, #151821 45%, #1A1020 100%)',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse 70% 70% at 30% 50%, black, transparent)',
+        }}
+      />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md">
-            <img
-              src="/brand/krws-mark.png"
-              alt="KR Logo"
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/brand/kr-logo.png';
-              }}
-            />
-          </div>
-          <div>
-            <span className="font-bold text-lg text-white block tracking-tight">
-              KR Workspace
-            </span>
-            <span className="text-xs text-[#94A3B8] font-medium tracking-wider uppercase block">
-              Internal ERP · CRM
-            </span>
-          </div>
-        </div>
-
-        <div className="relative z-10 space-y-8 my-auto py-12">
-          <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight font-heading">
-            Run KR Web Solution from one workspace
-          </h2>
-
-          <div className="space-y-4 text-sm text-[#94A3B8]">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-[#E32B2B]/20 text-[#E32B2B] flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <span className="text-white/90 font-medium">Projects &amp; milestone deliverables</span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-[#FADC59]/20 text-[#FADC59] flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <span className="text-white/90 font-medium">GST invoices and automated payment reminders</span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-[#E32B2B]/20 text-[#E32B2B] flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <span className="text-white/90 font-medium">Leads pipeline and verified client accounts</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative z-10 text-xs text-[#64748B]">
-          © {new Date().getFullYear()} KR Web Solution • Salem HQ, Tamil Nadu
-        </div>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-[-8%] top-[8%] hidden h-[70vmin] w-[70vmin] opacity-90 lg:block login-diamond-drift"
+      >
+        <svg viewBox="0 0 600 600" className="!h-full !w-full !max-w-none" fill="none" preserveAspectRatio="xMidYMid meet">
+          <polygon points="300,40 560,300 300,560 40,300" stroke="#E32B2B" strokeWidth="14" className="opacity-45" />
+          <polygon points="300,110 490,300 300,490 110,300" stroke="#FADC59" strokeWidth="10" className="opacity-40" />
+          <polygon points="300,180 420,300 300,420 180,300" stroke="#E32B2B" strokeWidth="7" className="opacity-55" />
+        </svg>
       </div>
 
-      {/* Right: Auth Form */}
-      <div className="w-full md:w-1/2 lg:w-7/12 flex items-center justify-center p-6 sm:p-12 lg:p-16">
-        <div className="w-full max-w-md space-y-8">
-          <div className="md:hidden flex items-center gap-3 mb-6">
-            <div className="w-9 h-9 rounded-xl bg-[#12141C] p-1 flex items-center justify-center">
-              <img
-                src="/brand/krws-mark.png"
-                alt="Logo"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/brand/kr-logo.png';
-                }}
-              />
-            </div>
-            <div>
-              <span className="font-bold text-sm text-[#0F172A] block">KR Workspace</span>
-              <span className="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">
-                Internal CRM &amp; ERP
-              </span>
+      <div
+        className={`relative z-10 mx-auto grid min-h-screen w-full max-w-6xl grid-cols-1 lg:grid-cols-2 transition-opacity duration-300 ease-out ${
+          phase === 'redirecting' ? 'opacity-40 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        <section className="relative flex flex-col justify-between px-6 pb-4 pt-8 sm:px-10 lg:px-14 lg:py-14">
+          <div className="login-fade-up">
+            <div className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 backdrop-blur-sm">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5 shadow-[0_8px_24px_rgba(227,43,43,0.25)]">
+                <img
+                  src="/brand/krws-mark.png"
+                  alt=""
+                  className="h-full w-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/nav-logo/krws-mark-light.png';
+                  }}
+                />
+              </div>
+              <div className="pr-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FADC59]/90">
+                  KR Web Solution
+                </p>
+                <p className="text-xs text-white/55">Salem HQ · Tamil Nadu</p>
+              </div>
             </div>
           </div>
 
-          <div>
-            <h1 className="text-[28px] leading-[36px] font-bold text-[#0F172A] tracking-[-0.02em] font-heading">
-              Welcome back
+          <div className="my-8 max-w-xl login-fade-up login-fade-up-delay lg:my-0">
+            <h1 className="font-heading !text-[clamp(2.25rem,4.5vw,3.6rem)] font-extrabold !leading-[1.05] tracking-[-0.04em] !text-white">
+              KR Workspace
             </h1>
-            <p className="text-sm text-[#64748B] mt-1">
-              Sign in with Google or your email and password
+            <p className="mt-4 max-w-md text-base leading-relaxed text-white/65 sm:text-lg">
+              The internal ERP &amp; CRM for projects, invoices, and client work — invite-only access.
+            </p>
+            <div className="mt-8 h-1 w-16 rounded-full bg-gradient-to-r from-[#E32B2B] to-[#FADC59] login-accent-pulse" />
+          </div>
+
+          <p className="hidden text-xs text-white/35 lg:block">
+            © {new Date().getFullYear()} KR Web Solution
+          </p>
+        </section>
+
+        <section className="flex items-center justify-center px-5 pb-10 pt-2 sm:px-8 lg:px-10 lg:py-14">
+          <div className="w-full max-w-[420px] login-fade-up login-fade-up-delay-2">
+            <div className="rounded-3xl border border-white/12 bg-[#F7F8FA] p-7 shadow-[0_30px_80px_rgba(0,0,0,0.45)] sm:p-9 transition-transform duration-300 ease-out will-change-transform">
+              <div className="mb-7">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#E32B2B]">
+                  Sign in
+                </p>
+                <h2 className="mt-2 font-heading text-2xl font-bold tracking-[-0.03em] text-[#0F172A] sm:text-[1.7rem]">
+                  Welcome back
+                </h2>
+                <p className="mt-1.5 text-sm text-[#64748B]">{oauthHint(oauth)}</p>
+              </div>
+
+              {error && (
+                <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-[#B91C1C]/20 bg-[#FDECEC] p-3.5 text-xs font-medium text-[#B91C1C] animate-[login-fade-up_0.35s_ease-out]">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="leading-relaxed">{error}</span>
+                </div>
+              )}
+
+              {oauthEnabled && (
+                <div className="mb-6 space-y-3">
+                  {googleEnabled && oauth && (
+                    <GoogleSignInButton
+                      clientId={oauth.googleClientId}
+                      onCredential={handleGoogle}
+                      onError={(msg) => {
+                        setError(msg);
+                        setPhase('idle');
+                      }}
+                      disabled={busy}
+                    />
+                  )}
+                  {microsoftEnabled && oauth && (
+                    <MicrosoftSignInButton
+                      clientId={oauth.microsoftClientId}
+                      tenantId={oauth.microsoftTenantId}
+                      onCredential={handleMicrosoft}
+                      onError={(msg) => {
+                        setError(msg);
+                        setPhase('idle');
+                      }}
+                      disabled={busy}
+                    />
+                  )}
+                  <div className="relative py-1">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-[#E6E8EE]" />
+                    </div>
+                    <div className="relative flex justify-center text-[11px]">
+                      <span className="bg-[#F7F8FA] px-3 font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">
+                        or email
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-[#0F172A]">
+                    Email <span className="text-[#E32B2B]">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+                    <input
+                      type="email"
+                      required
+                      autoComplete="username"
+                      autoFocus={!oauthEnabled}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@krwebsolution.com"
+                      disabled={busy}
+                      className={fieldClass}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <label className="block text-xs font-semibold text-[#0F172A]">
+                      Password <span className="text-[#E32B2B]">*</span>
+                    </label>
+                    <Link
+                      href="/forgot-password"
+                      className="shrink-0 text-xs font-semibold text-[#E32B2B] transition-colors hover:text-[#C81F26] hover:underline"
+                      tabIndex={busy ? -1 : 0}
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      disabled={busy}
+                      className={`${fieldClass} pr-11`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={busy}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer p-1 text-[#94A3B8] transition-colors hover:text-[#0F172A] disabled:opacity-50"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  isLoading={phase === 'submitting'}
+                  disabled={busy}
+                  className="mt-2 h-12 w-full rounded-xl text-[15px] font-bold tracking-wide shadow-[0_10px_28px_rgba(227,43,43,0.28)]"
+                >
+                  {phase === 'redirecting' ? 'Opening workspace…' : 'Sign in'}
+                </Button>
+              </form>
+
+              <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-[#94A3B8]">
+                <Shield className="h-3.5 w-3.5 text-[#16A34A]" />
+                <span>Secure httpOnly session cookie</span>
+              </div>
+            </div>
+
+            <p className="mt-5 text-center text-xs text-white/40 lg:hidden">
+              © {new Date().getFullYear()} KR Web Solution
             </p>
           </div>
+        </section>
+      </div>
 
-          {error && (
-            <div className="p-3.5 bg-[#FDECEC] border border-[#B91C1C]/25 rounded-[10px] flex items-start gap-2.5 text-xs text-[#B91C1C] animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed font-medium">{error}</span>
+      {phase === 'redirecting' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0D14]/55 backdrop-blur-[3px] animate-[login-fade-up_0.35s_ease-out]">
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-[#12141C]/90 px-8 py-7 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+            <span className="h-9 w-9 rounded-full border-2 border-white/20 border-t-[#E32B2B] border-r-[#FADC59] animate-spin" />
+            <div className="text-center">
+              <p className="font-heading text-sm font-bold text-white">Opening KR Workspace</p>
+              <p className="mt-1 text-xs text-white/55">Preparing your dashboard…</p>
             </div>
-          )}
-
-          {GOOGLE_ENABLED && (
-            <div className="space-y-4">
-              <GoogleSignInButton
-                onCredential={handleGoogle}
-                onError={(msg) => {
-                  setError(msg);
-                  setIsSubmitting(false);
-                }}
-                disabled={isSubmitting}
-              />
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-[#E6E8EE]" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-white px-3 text-[#94A3B8] font-medium">or continue with email</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                Email Address <span className="text-[#E32B2B]">*</span>
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="email"
-                  required
-                  autoFocus={!GOOGLE_ENABLED}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@krwebsolution.com"
-                  className="w-full h-11 pl-9 pr-3.5 bg-white border border-[#E6E8EE] rounded-[10px] text-sm text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E32B2B] focus-visible:border-[#E32B2B]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-[#0F172A]">
-                  Password <span className="text-[#E32B2B]">*</span>
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-semibold text-[#E32B2B] hover:text-[#C81F26] hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full h-11 pl-9 pr-10 bg-white border border-[#E6E8EE] rounded-[10px] text-sm text-[#0F172A] placeholder:text-[#94A3B8] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E32B2B] focus-visible:border-[#E32B2B]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#0F172A] p-1 cursor-pointer"
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={isSubmitting}
-              className="w-full mt-2 font-bold shadow-sm"
-            >
-              Sign In
-            </Button>
-          </form>
-
-          <div className="pt-4 border-t border-[#E6E8EE] text-center text-xs text-[#94A3B8] flex items-center justify-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-[#16A34A]" />
-            <span>Encrypted session with secure httpOnly cookie</span>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

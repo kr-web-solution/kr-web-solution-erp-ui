@@ -22,7 +22,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar } from '@/components/ui/Avatar';
 import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 export default function ProfilePage() {
@@ -41,7 +41,7 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   if (!user) {
-    return <LoadingAnimation fullPage label="Loading profile…" />;
+    return <PageSkeleton variant="form" />;
   }
 
   // Password requirements

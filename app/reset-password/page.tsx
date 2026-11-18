@@ -18,7 +18,7 @@ import {
   CalendarCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { FormPageSkeleton } from '@/components/ui/Skeleton';
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -391,7 +391,7 @@ export default function ResetPasswordPage() {
 
       {/* Right: Reset Form */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-16 overflow-y-auto">
-        <Suspense fallback={<LoadingAnimation label="Loading secure form…" />}>
+        <Suspense fallback={<FormPageSkeleton className="max-w-md" />}>
           <ResetPasswordForm />
         </Suspense>
       </div>

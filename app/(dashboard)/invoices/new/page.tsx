@@ -3,7 +3,7 @@
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { InvoiceEditor } from '@/components/invoices/InvoiceEditor';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 
 function NewInvoiceInner() {
   const searchParams = useSearchParams();
@@ -18,7 +18,7 @@ function NewInvoiceInner() {
 
 export default function NewInvoicePage() {
   return (
-    <Suspense fallback={<LoadingAnimation fullPage label="Loading invoice…" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <NewInvoiceInner />
     </Suspense>
   );

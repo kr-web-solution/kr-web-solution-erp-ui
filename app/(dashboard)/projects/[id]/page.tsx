@@ -31,7 +31,7 @@ import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
 import { Tabs } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { ProjectDeliveryPanel } from '@/components/projects/ProjectDeliveryPanel';
 import { ProjectFilesPanel } from '@/components/projects/ProjectFilesPanel';
 import { ProjectFeaturesPanel } from '@/components/projects/ProjectFeaturesPanel';
@@ -505,7 +505,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   };
 
   if (isLoading) {
-    return <LoadingAnimation fullPage label="Loading project…" />;
+    return <PageSkeleton variant="detail" />;
   }
 
   if (error || !project) {

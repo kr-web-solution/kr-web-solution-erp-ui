@@ -67,8 +67,14 @@ export function StageContract({
                   No client linked yet. Create one from this company contact to continue.
                 </p>
                 {isFounder && onLinkClient && (
-                  <Button size="sm" variant="primary" isLoading={busy} onClick={onLinkClient}>
-                    <Link2 className="w-3.5 h-3.5 mr-1" aria-hidden /> Create & link client
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    isLoading={busy}
+                    onClick={onLinkClient}
+                    icon={<Link2 className="h-3.5 w-3.5" aria-hidden />}
+                  >
+                    Create & link client
                   </Button>
                 )}
               </>

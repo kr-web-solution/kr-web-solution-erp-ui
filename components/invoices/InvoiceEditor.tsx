@@ -25,7 +25,7 @@ import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { PaperInvoice, InvoiceLineItem } from '@/components/ui/PaperInvoice';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 interface FormLineItem {
@@ -362,7 +362,7 @@ export function InvoiceEditor({
   }));
 
   if (isLoadingMeta) {
-    return <LoadingAnimation fullPage label="Loading invoice editor…" />;
+    return <PageSkeleton variant="form" />;
   }
 
   return (

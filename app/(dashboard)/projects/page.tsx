@@ -47,7 +47,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Tabs } from '@/components/ui/Tabs';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 export default function ProjectsPage() {
@@ -594,7 +594,7 @@ export default function ProjectsPage() {
       {/* CONTENT: CARDS VIEW */}
       {/* ========================================================= */}
       {isLoading ? (
-        <LoadingAnimation fullPage label="Loading projects…" />
+        <PageSkeleton variant="list" cols={6} showKpis />
       ) : filteredProjects.length === 0 ? (
         <EmptyState
           title="No projects found"

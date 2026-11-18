@@ -109,14 +109,17 @@ export async function apiClient<T>(
 
   if (!response.ok) {
     const isAuthAttempt =
-      endpoint.includes('/auth/login') || endpoint.includes('/auth/google');
+      endpoint.includes('/auth/login') ||
+      endpoint.includes('/auth/google') ||
+      endpoint.includes('/auth/microsoft');
     if (response.status === 401 && !isAuthAttempt) {
       setAuthToken(null);
       if (
         typeof window !== 'undefined' &&
         !window.location.pathname.startsWith('/login') &&
         !window.location.pathname.startsWith('/forgot-password') &&
-        !window.location.pathname.startsWith('/reset-password')
+        !window.location.pathname.startsWith('/reset-password') &&
+        !window.location.pathname.startsWith('/set-password')
       ) {
         window.location.href = '/login';
       }
@@ -169,6 +172,17 @@ export const authApi = {
     return res;
   },
 
+  loginWithMicrosoft: async (idToken: string) => {
+    const res = await apiClient<{ access_token: string; token_type: string; user: User }>(
+      '/api/v1/auth/microsoft',
+      { method: 'POST', body: JSON.stringify({ id_token: idToken }) }
+    );
+    if (res?.access_token) {
+      setAuthToken(res.access_token);
+    }
+    return res;
+  },
+
   logout: async () => {
     setAuthToken(null);
     return apiClient<{ message: string }>('/api/v1/auth/logout', { method: 'POST' });
@@ -179,6 +193,17 @@ export const authApi = {
 
   updateMe: (data: { full_name?: string; password?: string; current_password?: string }) =>
     apiClient<User>('/api/v1/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  updateProfile: (data: {
+    full_name?: string;
+    phone?: string;
+    designation?: string;
+    department?: string;
+  }) =>
+    apiClient<User>('/api/v1/auth/me/profile', {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
@@ -194,6 +219,19 @@ export const authApi = {
       '/api/v1/auth/reset-password',
       { method: 'POST', body: JSON.stringify(payload) }
     ),
+
+  setPassword: (payload: { token: string; new_password: string }) =>
+    apiClient<{ message: string }>(
+      '/api/v1/auth/set-password',
+      { method: 'POST', body: JSON.stringify(payload) }
+    ),
+
+  oauthProviders: () =>
+    apiClient<{
+      google_client_id?: string | null;
+      microsoft_client_id?: string | null;
+      microsoft_tenant_id?: string;
+    }>('/api/v1/auth/oauth-providers', { method: 'GET', cache: 'no-store' }),
 };
 
 export const dashboardApi = {
@@ -820,7 +858,15 @@ export const usersApi = {
   list: () =>
     apiClient<User[]>('/api/v1/users', { cache: 'no-store' }),
 
-  create: (data: { email: string; password: string; full_name: string; role: string; client_id?: string | null }) =>
+  create: (data: {
+    email: string;
+    full_name: string;
+    role: string;
+    client_id?: string | null;
+    lead_id?: string | null;
+    phone?: string | null;
+    designation?: string | null;
+  }) =>
     apiClient<User>('/api/v1/users', {
       method: 'POST',
       body: JSON.stringify(data),

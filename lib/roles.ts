@@ -17,6 +17,8 @@ export function roleLabel(role?: UserRole | string | null): string {
       return 'Worker';
     case 'client':
       return 'Client';
+    case 'lead':
+      return 'Lead';
     default:
       return role || 'User';
   }

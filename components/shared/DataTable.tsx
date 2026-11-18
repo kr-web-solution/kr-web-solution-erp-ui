@@ -10,7 +10,7 @@ import {
   Search,
   MoreVertical,
 } from 'lucide-react';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { CardSkeleton, TableRowSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 export interface Column<T> {
@@ -188,11 +188,9 @@ export function DataTable<T>({
             </thead>
             <tbody className="divide-y divide-[#E6E8EE]">
               {isLoading ? (
-                <tr>
-                  <td colSpan={columns.length} className="px-4 py-12">
-                    <LoadingAnimation label="Loading…" />
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <TableRowSkeleton key={i} cols={columns.length} />
+                ))
               ) : paginatedData.length > 0 ? (
                 paginatedData.map((row) => (
                   <tr
@@ -235,8 +233,12 @@ export function DataTable<T>({
         {/* Mobile View (Cards) below 768px */}
         <div className="md:hidden divide-y divide-[#E6E8EE]">
           {isLoading ? (
-            <div className="p-10">
-              <LoadingAnimation label="Loading…" />
+            <div className="space-y-0 divide-y divide-[#E6E8EE]">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="p-4">
+                  <CardSkeleton className="border-0 p-0 shadow-none" />
+                </div>
+              ))}
             </div>
           ) : paginatedData.length > 0 ? (
             paginatedData.map((row) => (

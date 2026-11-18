@@ -58,7 +58,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { CardSkeleton, TableRowSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { toast } from 'sonner';
 
@@ -358,8 +358,13 @@ export default function DashboardPage() {
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             </div>
           )}
-          <Button variant="secondary" size="sm" onClick={fetchSummary} isLoading={isLoading}>
-            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={fetchSummary}
+            isLoading={isLoading}
+            icon={<RefreshCw className="h-3.5 w-3.5" />}
+          >
             Refresh
           </Button>
         </div>
@@ -569,11 +574,9 @@ export default function DashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {isLoading ? (
-                    <tr>
-                      <td colSpan={6} className="px-5 py-12">
-                        <LoadingAnimation label="Loading activity…" />
-                      </td>
-                    </tr>
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRowSkeleton key={i} cols={6} />
+                    ))
                   ) : summary?.recent_items?.length ? (
                     summary.recent_items.map((item) => {
                       const itemDate = new Date(item.date).toLocaleDateString('en-IN', {
@@ -653,7 +656,13 @@ export default function DashboardPage() {
             {/* Mobile cards */}
             <div className="divide-y divide-border md:hidden">
               {isLoading ? (
-                <LoadingAnimation label="Loading…" className="py-10" />
+                <div className="space-y-0 divide-y divide-border">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="p-4">
+                      <CardSkeleton className="border-0 p-0" />
+                    </div>
+                  ))}
+                </div>
               ) : summary?.recent_items?.length ? (
                 summary.recent_items.map((item) => {
                   let href = routes.dashboard;

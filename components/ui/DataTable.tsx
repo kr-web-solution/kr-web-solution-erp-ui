@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { LoadingAnimation } from './LoadingAnimation';
+import { TableRowSkeleton } from './Skeleton';
 
 export interface Column<T> {
   key: string;
@@ -132,11 +132,9 @@ export function DataTable<T extends Record<string, any>>({
 
           <tbody className="divide-y divide-border text-xs text-text">
             {isLoading ? (
-              <tr>
-                <td colSpan={columns.length} className="px-3.5 py-10">
-                  <LoadingAnimation label="Loading…" />
-                </td>
-              </tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRowSkeleton key={i} cols={columns.length} />
+              ))
             ) : paginatedData.length === 0 ? (
               <tr>
                 <td

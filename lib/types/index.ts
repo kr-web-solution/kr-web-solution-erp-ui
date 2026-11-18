@@ -41,10 +41,14 @@ export interface User {
   is_active: boolean;
   phone?: string | null;
   designation?: string | null;
+  department?: string | null;
   created_at: string;
   role_info?: RoleBrief | null;
   client?: ClientPartyBrief | null;
   lead?: LeadPartyBrief | null;
+  password_set?: boolean;
+  profile_completed?: boolean;
+  missing_profile_fields?: string[];
 }
 
 export interface Client {

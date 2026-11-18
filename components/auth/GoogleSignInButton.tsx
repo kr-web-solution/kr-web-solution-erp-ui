@@ -3,8 +3,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
-
 type GoogleCredentialResponse = {
   credential?: string;
 };
@@ -41,12 +39,13 @@ declare global {
 }
 
 type Props = {
+  clientId: string;
   onCredential: (idToken: string) => void | Promise<void>;
   onError?: (message: string) => void;
   disabled?: boolean;
 };
 
-export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
+export function GoogleSignInButton({ clientId, onCredential, onError, disabled }: Props) {
   const buttonRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
   const callbackRef = useRef(onCredential);
@@ -58,7 +57,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
   }, [onCredential, onError]);
 
   useEffect(() => {
-    if (!scriptReady || !GOOGLE_CLIENT_ID || !buttonRef.current || disabled) return;
+    if (!scriptReady || !clientId || !buttonRef.current || disabled) return;
     if (!window.google?.accounts?.id) return;
 
     const el = buttonRef.current;
@@ -66,7 +65,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
 
     try {
       window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: clientId,
         callback: async (response) => {
           const token = response?.credential;
           if (!token) {
@@ -100,11 +99,9 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
     } catch {
       errorRef.current?.('Could not initialize Google sign-in.');
     }
-  }, [scriptReady, disabled]);
+  }, [scriptReady, clientId, disabled]);
 
-  if (!GOOGLE_CLIENT_ID) {
-    return null;
-  }
+  if (!clientId) return null;
 
   return (
     <>

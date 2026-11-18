@@ -267,10 +267,10 @@ export default function ClientsPage() {
             size="sm"
             onClick={fetchClients}
             isLoading={isLoading}
+            icon={<RefreshCw className="h-3.5 w-3.5" />}
             className="h-9"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            Refresh
           </Button>
 
           {isFounder && (

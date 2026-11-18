@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { cn } from '@/lib/utils/cn';
 
@@ -106,7 +106,7 @@ export function KpiCard({
               )}
             >
               {isLoading ? (
-                <LoadingAnimation size="sm" className="items-start gap-0 py-1" aria-label="Loading" />
+                <Skeleton className="mt-1 h-7 w-24" />
               ) : (
                 value
               )}

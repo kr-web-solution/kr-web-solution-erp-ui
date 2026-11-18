@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 
 export default function RootPage() {
   const { user, isLoading } = useAuth();
@@ -19,5 +19,9 @@ export default function RootPage() {
     }
   }, [user, isLoading, router]);
 
-  return <LoadingAnimation fullPage label="Opening workspace…" />;
+  return (
+    <div className="p-6">
+      <PageSkeleton variant="dashboard" />
+    </div>
+  );
 }

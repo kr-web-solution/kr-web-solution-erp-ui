@@ -35,7 +35,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { Textarea } from '@/components/ui/Textarea';
 import { toast } from 'sonner';
 
@@ -132,7 +132,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   }, [invoices]);
 
   if (isLoading) {
-    return <LoadingAnimation fullPage label="Loading client…" />;
+    return <PageSkeleton variant="detail" />;
   }
 
   if (error || !client) {

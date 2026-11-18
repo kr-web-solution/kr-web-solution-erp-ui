@@ -142,8 +142,8 @@ The application strictly adheres to the official **KR Web Solution** brand langu
 Tabbed administration workspace:
 1. **Company & Invoices:** Legal company name, registered address, GSTIN, invoice prefix, next sequence number, default tax rate, and bank/UPI coordinates.
 2. **SMTP & Email Dispatch:** SMTP server host, port, username, password (encrypted at rest), STARTTLS toggle, and a live "Send Test Email" utility.
-3. **User Management:** List active workspace accounts, toggle active/deactivate status, and invite new users with specific roles (`founder_ceo`, `worker`, `client`).
-4. **Email Templates:** Live editor for standard transactional templates (`invoice_sent`, `payment_reminder`, `lead_welcome`, `password_reset`) with variable tags.
+3. **User Management:** Invite people for any role (`admin`, `founder_ceo`, `worker`, `client`, `lead`) via set-password email. Staff must use `@krwebsolution.com`; clients/leads must not.
+4. **Email Templates:** Live editor for transactional templates including `user_invite`, `password_reset`, invoice/payment notices.
 
 ---
 
@@ -152,9 +152,14 @@ Tabbed administration workspace:
 Create `kr-erp-ui/.env.local`:
 
 ```env
-# Backend API Base URL
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+# Empty = same-origin via Next rewrite
+NEXT_PUBLIC_API_URL=
+API_INTERNAL_URL=http://127.0.0.1:8000
 ```
+
+Google / Microsoft OAuth client IDs are configured on the **API** only (`GOOGLE_CLIENT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_TENANT_ID`). The UI loads them from `GET /api/v1/auth/oauth-providers` (public IDs only — secrets never leave the API).
+
+After login, incomplete profiles are gated at `/onboarding/profile` until required fields are filled.
 
 ---
 

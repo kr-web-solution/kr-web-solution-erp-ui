@@ -145,7 +145,11 @@ export default function CompanyExpensesOverviewPage() {
               <ArrowRight className="h-4 w-4 shrink-0 text-[#94A3B8] transition-transform group-hover:translate-x-0.5 group-hover:text-[#E32B2B]" />
             </div>
             <p className="mt-4 text-lg font-semibold text-[#0F172A]">
-              {loading ? '…' : formatINR(totalsBySection[sec.id] || 0)}
+              {loading ? (
+                <span className="inline-block h-6 w-24 animate-pulse rounded-md bg-[#EEF1F5]" aria-hidden />
+              ) : (
+                formatINR(totalsBySection[sec.id] || 0)
+              )}
               <span className="ml-1.5 text-xs font-normal text-[#94A3B8]">total</span>
             </p>
           </Link>

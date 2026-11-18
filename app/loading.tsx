@@ -1,5 +1,9 @@
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 
 export default function Loading() {
-  return <LoadingAnimation fullPage label="Loading workspace…" />;
+  return (
+    <div className="p-6">
+      <PageSkeleton variant="dashboard" />
+    </div>
+  );
 }

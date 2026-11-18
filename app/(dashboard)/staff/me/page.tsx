@@ -38,7 +38,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { isPrivileged } from '@/lib/roles';
 
 function todayISO() {
@@ -248,7 +248,7 @@ export default function WorkerHomePage() {
   };
 
   if (loading || !home) {
-    return <LoadingAnimation fullPage label="Loading your workday…" />;
+    return <PageSkeleton variant="dashboard" />;
   }
 
   const showTeamLink = !!inbox || isPrivileged(user?.role);

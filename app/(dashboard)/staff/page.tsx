@@ -46,7 +46,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Avatar } from '@/components/ui/Avatar';
 import { Tabs } from '@/components/ui/Tabs';
@@ -356,7 +356,7 @@ export default function StaffAdminPage() {
   ];
 
   if (loading) {
-    return <LoadingAnimation fullPage label="Loading staff…" />;
+    return <PageSkeleton variant="list" cols={6} />;
   }
 
   return (

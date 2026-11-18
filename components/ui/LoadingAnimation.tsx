@@ -44,16 +44,20 @@ export function LoadingAnimation({
   const status = ariaLabel || label || 'Loading';
   const showLogo = resolvedSize !== 'sm';
 
+  const isInline = !fullPage && resolvedSize === 'sm';
+
   return (
     <div
       role="status"
       aria-live="polite"
       aria-label={status}
       className={cn(
-        'flex flex-col items-center justify-center gap-4',
+        'flex items-center justify-center',
         fullPage
-          ? 'fixed inset-0 z-[80] w-screen h-[100dvh] bg-bg/90 backdrop-blur-[2px]'
-          : 'w-full min-h-[12rem]',
+          ? 'fixed inset-0 z-[80] w-screen h-[100dvh] flex-col gap-4 bg-bg/90 backdrop-blur-[2px]'
+          : isInline
+            ? 'inline-flex shrink-0'
+            : 'w-full min-h-[12rem] flex-col gap-4',
         className
       )}
     >

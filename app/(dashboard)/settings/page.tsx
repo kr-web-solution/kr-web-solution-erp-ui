@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { settingsApi, usersApi, clientsApi } from '@/lib/api/client';
-import { CompanySettings, EmailTemplate, User, Client } from '@/lib/types';
+import { settingsApi, usersApi, clientsApi, leadsApi } from '@/lib/api/client';
+import { CompanySettings, EmailTemplate, User, Client, Lead } from '@/lib/types';
 import { roleLabel } from '@/lib/roles';
 import {
   Building2,
@@ -36,7 +36,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Tabs } from '@/components/ui/Tabs';
-import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 const SUB_NAV = [
@@ -74,13 +74,14 @@ export default function SettingsCompanyPage() {
   // Users State
   const [usersList, setUsersList] = useState<User[]>([]);
   const [clientsList, setClientsList] = useState<Client[]>([]);
+  const [leadsList, setLeadsList] = useState<Lead[]>([]);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
     full_name: '',
     email: '',
-    password: '',
     role: 'worker',
     client_id: '',
+    lead_id: '',
   });
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
   const [userModalError, setUserModalError] = useState<string | null>(null);
@@ -95,11 +96,12 @@ export default function SettingsCompanyPage() {
   const fetchSettingsData = async () => {
     setIsLoading(true);
     try {
-      const [st, uList, tList, cList] = await Promise.all([
+      const [st, uList, tList, cList, lList] = await Promise.all([
         settingsApi.get(),
         usersApi.list(),
         settingsApi.listTemplates(),
         clientsApi.list(),
+        leadsApi.list(),
       ]);
 
       setSettings(st);
@@ -120,6 +122,7 @@ export default function SettingsCompanyPage() {
         setTemplateBody(tList[0].body);
       }
       setClientsList(cList);
+      setLeadsList(lList);
       setHasUnsavedChanges(false);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load system settings.');
@@ -196,28 +199,36 @@ export default function SettingsCompanyPage() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserModalError(null);
+    if (newUserForm.role === 'client' && !newUserForm.client_id) {
+      setUserModalError('Select a client company for client portal users.');
+      return;
+    }
+    if (newUserForm.role === 'lead' && !newUserForm.lead_id) {
+      setUserModalError('Select a lead record for lead portal users.');
+      return;
+    }
     setIsSubmittingUser(true);
     try {
       await usersApi.create({
         full_name: newUserForm.full_name.trim(),
         email: newUserForm.email.trim(),
-        password: newUserForm.password,
         role: newUserForm.role,
         client_id: newUserForm.role === 'client' ? newUserForm.client_id || null : null,
+        lead_id: newUserForm.role === 'lead' ? newUserForm.lead_id || null : null,
       });
 
-      toast.success(`User "${newUserForm.full_name}" registered`);
+      toast.success(`Invite sent to "${newUserForm.full_name}"`);
       setIsUserModalOpen(false);
       setNewUserForm({
         full_name: '',
         email: '',
-        password: '',
         role: 'worker',
         client_id: '',
+        lead_id: '',
       });
       fetchSettingsData();
     } catch (err: any) {
-      setUserModalError(err?.message || 'Failed to create user account.');
+      setUserModalError(err?.message || 'Failed to invite user.');
     } finally {
       setIsSubmittingUser(false);
     }
@@ -314,7 +325,7 @@ export default function SettingsCompanyPage() {
   ];
 
   if (isLoading || !settings) {
-    return <LoadingAnimation fullPage label="Loading settings…" />;
+    return <PageSkeleton variant="form" />;
   }
 
   return (
@@ -912,6 +923,7 @@ export default function SettingsCompanyPage() {
                         ['invoice_overdue', 'Overdue notice with strong pay-now emphasis'],
                         ['payment_received', 'Paid receipt confirmation'],
                         ['password_reset', 'Reset button + secure link'],
+                        ['user_invite', 'Invite set-password link (72h)'],
                         ['lead_welcome', 'Lead acknowledgement within 24 hours'],
                       ].map(([id, desc]) => (
                         <div
@@ -1003,8 +1015,8 @@ export default function SettingsCompanyPage() {
         <Modal
           isOpen={isUserModalOpen}
           onClose={() => setIsUserModalOpen(false)}
-          title="Add a person"
-          subtitle="A founder, worker, or client login."
+          title="Invite a person"
+          subtitle="Sends a set-password email. Staff need @krwebsolution.com; clients/leads must not."
           size="md"
           footer={
             <div className="flex items-center justify-end gap-2 w-full">
@@ -1021,7 +1033,7 @@ export default function SettingsCompanyPage() {
                 onClick={handleCreateUser}
                 isLoading={isSubmittingUser}
               >
-                Register User
+                Send invite
               </Button>
             </div>
           }
@@ -1046,31 +1058,33 @@ export default function SettingsCompanyPage() {
               <Input
                 type="email"
                 required
-                placeholder="user@krwebsolution.com"
+                placeholder={
+                  newUserForm.role === 'client' || newUserForm.role === 'lead'
+                    ? 'name@client.com'
+                    : 'name@krwebsolution.com'
+                }
                 value={newUserForm.email}
                 onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
-              />
-            </FormField>
-
-            <FormField label="Initial Password" required>
-              <Input
-                type="password"
-                required
-                placeholder="••••••••••••"
-                value={newUserForm.password}
-                onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
               />
             </FormField>
 
             <FormField label="Workspace Role" required>
               <Select
                 value={newUserForm.role}
-                onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
+                onChange={(e) =>
+                  setNewUserForm({
+                    ...newUserForm,
+                    role: e.target.value,
+                    client_id: '',
+                    lead_id: '',
+                  })
+                }
               >
-                <option value="admin">Admin (Full workspace access)</option>
-                <option value="founder_ceo">Founder CEO (Full workspace access)</option>
-                <option value="worker">Worker (Engineering Contributor)</option>
-                <option value="client">Client (External Customer Portal)</option>
+                <option value="admin">Admin</option>
+                <option value="founder_ceo">Founder CEO</option>
+                <option value="worker">Worker</option>
+                <option value="client">Client</option>
+                <option value="lead">Lead</option>
               </Select>
             </FormField>
 
@@ -1084,6 +1098,22 @@ export default function SettingsCompanyPage() {
                   {clientsList.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
+
+            {newUserForm.role === 'lead' && (
+              <FormField label="Link to Lead" required>
+                <Select
+                  value={newUserForm.lead_id}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, lead_id: e.target.value })}
+                >
+                  <option value="">Select lead...</option>
+                  {leadsList.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} — {l.company}
                     </option>
                   ))}
                 </Select>
