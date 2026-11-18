@@ -1,13 +1,50 @@
-export type UserRole = 'admin' | 'founder_ceo' | 'worker' | 'client';
+export type UserRole = 'admin' | 'founder_ceo' | 'worker' | 'client' | 'lead';
+export type PartyType = 'staff' | 'client' | 'lead';
+
+export interface RoleBrief {
+  id: string;
+  code: string;
+  name: string;
+  party_type: PartyType;
+  description?: string | null;
+}
+
+export interface ClientPartyBrief {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  gstin?: string | null;
+  city?: string | null;
+  state?: string | null;
+}
+
+export interface LeadPartyBrief {
+  id: string;
+  name: string;
+  company: string;
+  contact_name: string;
+  email?: string | null;
+  phone?: string | null;
+  status: string;
+}
 
 export interface User {
   id: string;
   email: string;
   full_name: string;
   role: UserRole;
+  role_id: string;
+  party_type: PartyType;
   client_id?: string | null;
+  lead_id?: string | null;
   is_active: boolean;
+  phone?: string | null;
+  designation?: string | null;
   created_at: string;
+  role_info?: RoleBrief | null;
+  client?: ClientPartyBrief | null;
+  lead?: LeadPartyBrief | null;
 }
 
 export interface Client {
