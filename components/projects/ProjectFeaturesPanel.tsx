@@ -11,7 +11,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { toast } from 'sonner';
 
@@ -126,7 +126,7 @@ export function ProjectFeaturesPanel({ projectId, role, docsMode }: Props) {
     }
   };
 
-  if (loading) return <Skeleton className="h-64 w-full rounded-2xl" />;
+  if (loading) return <LoadingAnimation label="Loading features…" className="py-16" />;
 
   if (docsMode) {
     const allDocs = features.flatMap((f) =>

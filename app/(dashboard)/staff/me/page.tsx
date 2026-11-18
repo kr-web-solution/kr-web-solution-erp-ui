@@ -38,6 +38,7 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { isPrivileged } from '@/lib/roles';
 
 function todayISO() {
@@ -247,9 +248,7 @@ export default function WorkerHomePage() {
   };
 
   if (loading || !home) {
-    return (
-      <div className="py-16 text-center text-sm text-[#64748B]">Loading your workday…</div>
-    );
+    return <LoadingAnimation fullPage label="Loading your workday…" />;
   }
 
   const showTeamLink = !!inbox || isPrivileged(user?.role);

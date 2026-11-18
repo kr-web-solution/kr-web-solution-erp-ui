@@ -9,7 +9,7 @@ import { isPrivileged } from '@/lib/roles';
 import { StageChecklist } from '@/components/pipeline/StageChecklist';
 import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 interface Props {
@@ -59,7 +59,7 @@ export function ProjectDeliveryPanel({ projectId, role, onPhaseChange }: Props) 
   };
 
   if (loading || !delivery) {
-    return <Skeleton className="h-64 w-full rounded-2xl" />;
+    return <LoadingAnimation label="Loading delivery…" className="py-16" />;
   }
 
   const phase = delivery.delivery_phase || 5;

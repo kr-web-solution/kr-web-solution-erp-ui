@@ -36,6 +36,7 @@ import { PaperInvoice, InvoiceLineItem } from '@/components/ui/PaperInvoice';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -191,16 +192,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   };
 
   if (isLoading) {
-    return (
-      <div className="w-full min-w-0 space-y-6 pb-12">
-        <div className="h-6 w-48 bg-slate-200 rounded animate-pulse" />
-        <div className="h-28 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-7 h-[500px] bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-          <div className="lg:col-span-5 h-[500px] bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        </div>
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading invoice…" />;
   }
 
   if (error || !invoice) {

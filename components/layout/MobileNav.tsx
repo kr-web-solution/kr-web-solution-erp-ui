@@ -3,13 +3,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { X, LogOut } from 'lucide-react';
+import { ChevronDown, X, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import {
   NAV_SECTIONS,
   UserRole,
   isNavItemActive,
+  isNavItemOrChildActive,
   labelForNavItem,
+  type NavItem,
 } from '@/lib/nav';
 import { routes } from '@/lib/routes';
 import { Avatar } from '@/components/ui/Avatar';
@@ -98,38 +100,26 @@ export function MobileNav({ isOpen, onClose, userRole = 'founder_ceo' }: MobileN
         aria-modal="true"
         aria-label="Mobile Navigation"
       >
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
+        <div className="flex h-[72px] shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3 pr-2">
           <Link
             href={routes.dashboard}
-            className="flex min-w-0 items-center gap-2.5"
+            className="flex min-w-0 flex-1 items-center"
             onClick={onClose}
+            title="KR Workspace"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-bg p-1">
-              <img
-                src="/brand/krws-mark.png"
-                alt="Logo"
-                className="h-full w-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/brand/kr-logo.png';
-                }}
-              />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <span className="block truncate text-sm font-bold tracking-tight text-text">
-                KR Workspace
-              </span>
-              <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-muted">
-                {effectiveRole === 'client' ? 'Client portal' : 'Internal ERP · CRM'}
-              </span>
-            </div>
+            <img
+              src="/nav-logo/krws-wordmark-nav.png"
+              alt="KR Workspace"
+              className="h-[42px] w-auto max-w-full object-contain object-left"
+            />
           </Link>
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 cursor-pointer rounded-lg p-1.5 text-muted hover:bg-bg hover:text-text"
+            className="shrink-0 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-bg hover:text-text"
             aria-label="Close menu"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -142,42 +132,19 @@ export function MobileNav({ isOpen, onClose, userRole = 'founder_ceo' }: MobileN
 
             return (
               <div key={section.id} className="space-y-1">
-                <div className="px-2.5 pb-1 text-[10px] font-bold tracking-wider text-subtle uppercase">
+                <div className="px-2.5 pb-1 text-xs font-bold tracking-wider text-subtle uppercase">
                   {section.title}
                 </div>
                 <nav className="space-y-0.5" aria-label={section.title}>
-                  {visibleItems.map((item) => {
-                    const label = labelForNavItem(item);
-                    const Icon = item.icon;
-                    const isActive = isNavItemActive(pathname, item);
-
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={onClose}
-                        className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
-                          isActive
-                            ? 'bg-brand-red-tint text-brand-red-500'
-                            : 'text-muted hover:bg-bg hover:text-text'
-                        }`}
-                        aria-current={isActive ? 'page' : undefined}
-                      >
-                        {isActive && (
-                          <span
-                            className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-brand-red-500"
-                            aria-hidden
-                          />
-                        )}
-                        <Icon
-                          size={18}
-                          className={isActive ? 'text-brand-red-500' : 'text-muted'}
-                          aria-hidden
-                        />
-                        <span>{label}</span>
-                      </Link>
-                    );
-                  })}
+                  {visibleItems.map((item) => (
+                    <MobileNavItem
+                      key={item.href}
+                      item={item}
+                      pathname={pathname}
+                      role={effectiveRole}
+                      onClose={onClose}
+                    />
+                  ))}
                 </nav>
               </div>
             );
@@ -213,6 +180,120 @@ export function MobileNav({ isOpen, onClose, userRole = 'founder_ceo' }: MobileN
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MobileNavItem({
+  item,
+  pathname,
+  role,
+  onClose,
+}: {
+  item: NavItem;
+  pathname: string;
+  role: UserRole;
+  onClose: () => void;
+}) {
+  const label = labelForNavItem(item);
+  const Icon = item.icon;
+  const isActive = isNavItemActive(pathname, item);
+  const childActive = isNavItemOrChildActive(pathname, item);
+  const children = (item.children || []).filter((c) => c.roles.includes(role));
+  const hasChildren = children.length > 0;
+  const [open, setOpen] = useState(childActive || isActive);
+
+  useEffect(() => {
+    if (childActive || isActive) setOpen(true);
+  }, [childActive, isActive, pathname]);
+
+  return (
+    <div className="space-y-0.5">
+      <div
+        className={`relative flex items-center rounded-lg text-sm font-semibold transition-colors ${
+          isActive
+            ? 'bg-brand-red-tint text-brand-red-500'
+            : childActive
+              ? 'bg-bg text-text'
+              : 'text-muted hover:bg-bg hover:text-text'
+        }`}
+      >
+        {isActive && (
+          <span
+            className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-brand-red-500"
+            aria-hidden
+          />
+        )}
+        <Link
+          href={item.href}
+          onClick={onClose}
+          className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
+          aria-current={isActive ? 'page' : undefined}
+        >
+          <Icon
+            size={18}
+            className={isActive || childActive ? 'text-brand-red-500' : 'text-muted'}
+            aria-hidden
+          />
+          <span className="truncate">{label}</span>
+        </Link>
+
+        {hasChildren && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+            className="mr-1.5 shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted hover:text-text hover:bg-surface cursor-pointer"
+            aria-expanded={open}
+            aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                open ? 'rotate-0' : '-rotate-90'
+              }`}
+              aria-hidden
+            />
+          </button>
+        )}
+      </div>
+
+      {hasChildren && open && (
+        <div className="ml-4 space-y-0.5 border-l border-border pl-2">
+          {children.map((child) => {
+            const ChildIcon = child.icon;
+            const childIsActive = isNavItemActive(pathname, child);
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                onClick={onClose}
+                className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${
+                  childIsActive
+                    ? 'bg-brand-red-tint text-brand-red-500'
+                    : 'text-muted hover:bg-bg hover:text-text'
+                }`}
+                aria-current={childIsActive ? 'page' : undefined}
+              >
+                {childIsActive && (
+                  <span
+                    className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r-full bg-brand-red-500"
+                    aria-hidden
+                  />
+                )}
+                <ChildIcon
+                  size={14}
+                  className={childIsActive ? 'text-brand-red-500' : 'text-subtle'}
+                  aria-hidden
+                />
+                <span>{labelForNavItem(child)}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

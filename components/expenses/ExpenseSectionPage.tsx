@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { CurrencyInput, rupeesToPaise } from '@/components/ui/CurrencyInput';
 import {
   EXPENSE_CATEGORIES,
@@ -247,7 +248,7 @@ export function ExpenseSectionPage({ section }: { section: CompanyExpenseSection
 
       <SectionCard title={`${meta.label} expenses`} subtitle="All entries">
         {loading ? (
-          <p className="text-sm text-[#94A3B8]">Loading…</p>
+          <LoadingAnimation label="Loading expenses…" className="py-10" />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<IndianRupee className="h-5 w-5" />}

@@ -40,7 +40,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { toast } from 'sonner';
 
@@ -477,15 +477,7 @@ export default function DashboardPage() {
               >
                 <div className="divide-y divide-[#E6E8EE] -mx-4 -my-4 flex-1 min-h-[200px]">
                   {isLoading ? (
-                    Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="p-4 flex items-center justify-between">
-                        <div className="space-y-2">
-                          <Skeleton className="h-4 w-40" />
-                          <Skeleton className="h-3 w-28" />
-                        </div>
-                        <Skeleton className="h-6 w-16" />
-                      </div>
-                    ))
+                    <LoadingAnimation label="Loading activity…" className="py-12" />
                   ) : summary?.recent_items?.length ? (
                     summary.recent_items.map((item) => {
                       const itemDate = new Date(item.date).toLocaleDateString('en-IN', {

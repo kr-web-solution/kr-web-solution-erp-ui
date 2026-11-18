@@ -8,6 +8,10 @@ import {
   Settings,
   Briefcase,
   UsersRound,
+  RefreshCw,
+  Coffee,
+  Armchair,
+  MoreHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { routes } from './routes';
@@ -20,6 +24,7 @@ export interface NavItem {
   icon: LucideIcon;
   roles: UserRole[];
   matchPrefix?: boolean;
+  children?: NavItem[];
 }
 
 export interface NavSection {
@@ -31,6 +36,8 @@ export interface NavSection {
 export function labelForNavItem(item: NavItem): string {
   return item.label;
 }
+
+const EXPENSE_ROLES: UserRole[] = ['admin', 'founder_ceo'];
 
 /** Role-aware ERP nav — MAIN / SALES / FINANCE / ADMIN */
 export const NAV_SECTIONS: NavSection[] = [
@@ -101,8 +108,34 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Expenses',
         href: routes.expenses,
         icon: Wallet,
-        roles: ['admin', 'founder_ceo'],
+        roles: EXPENSE_ROLES,
         matchPrefix: true,
+        children: [
+          {
+            label: 'Recurring',
+            href: routes.expenseSection('recurring'),
+            icon: RefreshCw,
+            roles: EXPENSE_ROLES,
+          },
+          {
+            label: 'Daily',
+            href: routes.expenseSection('daily'),
+            icon: Coffee,
+            roles: EXPENSE_ROLES,
+          },
+          {
+            label: 'Upgrades',
+            href: routes.expenseSection('upgrades'),
+            icon: Armchair,
+            roles: EXPENSE_ROLES,
+          },
+          {
+            label: 'Other',
+            href: routes.expenseSection('other'),
+            icon: MoreHorizontal,
+            roles: EXPENSE_ROLES,
+          },
+        ],
       },
     ],
   },
@@ -123,14 +156,25 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (pathname === item.href) return true;
+
+  // Parent with children: only exact match (children get their own highlight)
+  if (item.children?.length) return false;
+
   if (!item.matchPrefix) return false;
-  // Avoid /dashboard matching everything via prefix
   if (item.href === routes.dashboard) return false;
   return pathname.startsWith(item.href + '/') || pathname.startsWith(item.href + '?');
 }
 
+export function isNavItemOrChildActive(pathname: string, item: NavItem): boolean {
+  if (isNavItemActive(pathname, item)) return true;
+  if (pathname === item.href) return true;
+  return !!item.children?.some((child) => isNavItemActive(pathname, child));
+}
+
 /** Flat list (legacy helpers) */
-export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
+export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) =>
+  s.items.flatMap((item) => [item, ...(item.children || [])])
+);
 export const MAIN_NAV_ITEMS = NAV_ITEMS;
 export const NAV_GROUPS = [
   {

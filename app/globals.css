@@ -61,6 +61,11 @@
     border-color: var(--color-border);
   }
 
+  html {
+    /* Scales rem-based UI text (nav, buttons, tables) */
+    font-size: 17px;
+  }
+
   html,
   body {
     overflow-x: hidden;
@@ -68,8 +73,8 @@
     background-color: var(--color-bg);
     color: var(--color-text);
     font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 20px;
+    font-size: 1rem;
+    line-height: 1.5;
     letter-spacing: 0em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -89,22 +94,22 @@
   }
 
   h1 {
-    font-size: clamp(22px, 4vw, 28px);
+    font-size: clamp(24px, 4vw, 30px);
     line-height: 1.25;
     font-weight: 700;
     letter-spacing: -0.02em;
   }
 
   h2 {
-    font-size: 18px;
-    line-height: 26px;
+    font-size: 1.25rem;
+    line-height: 1.45;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
 
   h3 {
-    font-size: 15px;
-    line-height: 22px;
+    font-size: 1.0625rem;
+    line-height: 1.45;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
@@ -148,7 +153,7 @@
   }
 
   .ops-eyebrow {
-    font-size: 11px;
+    font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -210,4 +215,47 @@
 
 .skip-to-content:focus {
   top: 1rem;
+}
+
+/* Shared KR loading animation (logo + ring) */
+@keyframes kr-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes kr-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+}
+
+@keyframes kr-loader-logo {
+  0%,
+  100% {
+    transform: scale(0.96);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+.kr-loader-spin {
+  animation: kr-loader-spin 0.9s linear infinite;
+}
+
+.kr-loader-pulse {
+  animation: kr-loader-pulse 1.25s ease-in-out infinite;
+}
+
+.kr-loader-logo {
+  animation: kr-loader-logo 1.4s ease-in-out infinite;
 }

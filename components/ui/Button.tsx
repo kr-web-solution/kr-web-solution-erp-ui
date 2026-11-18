@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   /** primary = brand red · accent = yellow “go” CTA · secondary/ghost/danger as usual */
@@ -64,7 +64,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {isLoading ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden />
+            <LoadingAnimation size="sm" className="gap-0" aria-label="Loading" />
             {!iconOnly && children}
           </>
         ) : (

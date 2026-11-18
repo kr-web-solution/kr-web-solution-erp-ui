@@ -12,6 +12,11 @@ import {
   Receipt,
   UsersRound,
   Upload,
+  Plane,
+  ClipboardCheck,
+  Inbox,
+  ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { staffApi } from '@/lib/api/client';
@@ -41,6 +46,12 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Avatar } from '@/components/ui/Avatar';
+import { Tabs } from '@/components/ui/Tabs';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { KpiCard } from '@/components/ui/KpiCard';
 
 const DEPARTMENTS = [
   'Developer',
@@ -100,6 +111,7 @@ export default function StaffAdminPage() {
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docTitle, setDocTitle] = useState('');
   const [docKind, setDocKind] = useState('offer');
+  const [inboxTab, setInboxTab] = useState('leave');
 
   const load = useCallback(async () => {
     try {
@@ -330,155 +342,264 @@ export default function StaffAdminPage() {
   const payGrossPaise = payPreview?.monthly_gross_paise || 0;
   const payNetPaise = Math.max(0, payGrossPaise - payTotalDeductionPaise);
 
+  const leavePending = inbox?.pending_leave.length || 0;
+  const correctionPending = inbox?.pending_corrections.length || 0;
+  const expensePending = inbox?.pending_expenses.length || 0;
+  const bankPending = privileged ? inbox?.pending_bank_changes.length || 0 : 0;
+  const pendingTotal = leavePending + correctionPending + expensePending + bankPending;
+
+  const inboxTabs = [
+    { id: 'leave', label: 'Leave', count: leavePending },
+    { id: 'corrections', label: 'Attendance', count: correctionPending },
+    { id: 'expenses', label: 'Expenses', count: expensePending },
+    ...(privileged ? [{ id: 'bank', label: 'Bank', count: bankPending }] : []),
+  ];
+
   if (loading) {
-    return <div className="py-16 text-center text-sm text-[#64748B]">Loading staff…</div>;
+    return <LoadingAnimation fullPage label="Loading staff…" />;
   }
 
   return (
-    <div className="w-full min-w-0 space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2">
-            <UsersRound className="w-5 h-5 text-[#E32B2B]" /> Staff
-          </h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
-            Directory, approvals, holidays, notices, and payslips
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {user?.role === 'worker' && (
-            <Button variant="secondary" size="sm" onClick={() => router.push(routes.staffMe)}>
-              My work
-            </Button>
-          )}
-          {privileged && (
-            <>
-              <Button variant="secondary" size="sm" onClick={() => setHolidayOpen(true)}>
-                <CalendarDays className="w-4 h-4" /> Holiday
+    <div className="w-full min-w-0 space-y-5">
+      <PageHeader
+        title="Staff"
+        description="People, approvals, leave, holidays, and payslips — one clear desk."
+        actions={
+          <>
+            {user?.role === 'worker' && (
+              <Button variant="secondary" size="sm" onClick={() => router.push(routes.staffMe)}>
+                My work
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setAnnOpen(true)}>
-                <Megaphone className="w-4 h-4" /> Notice
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setPayForm({
-                    user_id: directory[0]?.id || '',
-                    month_key: monthKeyNow(),
-                    deductions_rupees: '0',
-                    note: '',
-                  });
-                  setPayOpen(true);
-                }}
-              >
-                <Receipt className="w-4 h-4" /> Publish payslip
-              </Button>
-            </>
-          )}
-        </div>
+            )}
+            {privileged && (
+              <>
+                <Button variant="secondary" size="sm" onClick={() => setHolidayOpen(true)}>
+                  <CalendarDays className="w-4 h-4" /> Holiday
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setAnnOpen(true)}>
+                  <Megaphone className="w-4 h-4" /> Notice
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPayForm({
+                      user_id: directory[0]?.id || '',
+                      month_key: monthKeyNow(),
+                      deductions_rupees: '0',
+                      note: '',
+                    });
+                    setPayOpen(true);
+                  }}
+                >
+                  <Receipt className="w-4 h-4" /> Publish payslip
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <KpiCard
+          label="People"
+          value={directory.length}
+          caption={`${byDepartment.length} departments`}
+          icon={<UsersRound className="h-4 w-4" />}
+          variant="blue"
+        />
+        <KpiCard
+          label="Pending approvals"
+          value={pendingTotal}
+          caption={pendingTotal ? 'Needs your decision' : 'Inbox clear'}
+          icon={<Inbox className="h-4 w-4" />}
+          variant={pendingTotal ? 'crimson' : 'green'}
+        />
+        <KpiCard
+          label="On leave"
+          value={teamLeave.length}
+          caption="Approved this month"
+          icon={<Plane className="h-4 w-4" />}
+          variant="yellow"
+        />
+        <KpiCard
+          label="Holidays"
+          value={holidays.length}
+          caption="Company calendar"
+          icon={<CalendarDays className="h-4 w-4" />}
+          variant="green"
+        />
       </div>
 
-      {/* Inbox */}
       {inbox && (
-        <SectionCard title="Approvals inbox">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <InboxBlock
-              title="Leave"
-              empty="No pending leave"
-              items={inbox.pending_leave.map((l) => ({
-                id: l.id,
-                label: `${l.user_name} · ${l.leave_type}${l.half_day ? ' (half)' : ''}`,
-                meta: `${formatDate(l.start_date)} → ${formatDate(l.end_date)}`,
-              }))}
-              onApprove={(id) => decide('leave', id, 'approved')}
-              onReject={(id) => decide('leave', id, 'rejected')}
-            />
-            <InboxBlock
-              title="Attendance corrections"
-              empty="No pending corrections"
-              items={inbox.pending_corrections.map((c) => ({
-                id: c.id,
-                label: `${c.user_name} · ${c.correction_reason}`,
-                meta: formatDate(c.work_date),
-              }))}
-              onApprove={(id) => decide('correction', id, 'approved')}
-              onReject={(id) => decide('correction', id, 'rejected')}
-            />
-            <InboxBlock
-              title="Expenses"
-              empty="No pending expenses"
-              items={inbox.pending_expenses.map((e) => ({
-                id: e.id,
-                label: `${e.user_name} · ${e.category}`,
-                meta: `${formatINR(e.amount_paise)} · ${formatDate(e.expense_date)}`,
-              }))}
-              onApprove={(id) => decide('expense', id, 'approved')}
-              onReject={(id) => decide('expense', id, 'rejected')}
-              extraAction={
-                privileged
-                  ? { label: 'Mark paid', onClick: (id: string) => decide('expense', id, 'paid') }
-                  : undefined
-              }
-            />
-            {privileged && (
-              <InboxBlock
-                title="Bank changes"
-                empty="No pending bank changes"
-                items={inbox.pending_bank_changes.map((p) => ({
-                  id: p.id,
-                  label: p.full_name,
-                  meta: `A/c ${p.pending_bank_account || '—'} · ${p.pending_bank_ifsc || '—'}`,
-                }))}
-                onApprove={(id) => decide('bank', id, 'approved')}
-                onReject={(id) => decide('bank', id, 'rejected')}
+        <SectionCard
+          title="Approvals"
+          subtitle={
+            pendingTotal
+              ? `${pendingTotal} item${pendingTotal === 1 ? '' : 's'} waiting`
+              : 'Nothing waiting — you’re clear'
+          }
+          icon={<ClipboardCheck className="w-4 h-4" />}
+          badge={
+            pendingTotal > 0 ? (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-red-500 px-1.5 text-[10px] font-bold text-white tabular-nums">
+                {pendingTotal}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-tint px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success">
+                <Sparkles className="h-3 w-3" /> Clear
+              </span>
+            )
+          }
+        >
+          {pendingTotal === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-bg/60 px-4 py-8 text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-success">
+                <Check className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-semibold text-text">All caught up</p>
+              <p className="mt-1 text-xs text-muted">
+                Leave, attendance, expenses, and bank changes will show here when submitted.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Tabs
+                tabs={inboxTabs}
+                activeTab={inboxTab}
+                onChange={setInboxTab}
+                variant="pill"
               />
-            )}
-          </div>
+              {inboxTab === 'leave' && (
+                <InboxList
+                  empty="No pending leave requests"
+                  items={inbox.pending_leave.map((l) => ({
+                    id: l.id,
+                    title: l.user_name,
+                    detail: `${l.leave_type}${l.half_day ? ' · half day' : ''}`,
+                    meta: `${formatDate(l.start_date)} → ${formatDate(l.end_date)}`,
+                  }))}
+                  onApprove={(id) => decide('leave', id, 'approved')}
+                  onReject={(id) => decide('leave', id, 'rejected')}
+                />
+              )}
+              {inboxTab === 'corrections' && (
+                <InboxList
+                  empty="No pending attendance corrections"
+                  items={inbox.pending_corrections.map((c) => ({
+                    id: c.id,
+                    title: c.user_name,
+                    detail: c.correction_reason,
+                    meta: formatDate(c.work_date),
+                  }))}
+                  onApprove={(id) => decide('correction', id, 'approved')}
+                  onReject={(id) => decide('correction', id, 'rejected')}
+                />
+              )}
+              {inboxTab === 'expenses' && (
+                <InboxList
+                  empty="No pending staff expenses"
+                  items={inbox.pending_expenses.map((e) => ({
+                    id: e.id,
+                    title: e.user_name,
+                    detail: e.category,
+                    meta: `${formatINR(e.amount_paise)} · ${formatDate(e.expense_date)}`,
+                  }))}
+                  onApprove={(id) => decide('expense', id, 'approved')}
+                  onReject={(id) => decide('expense', id, 'rejected')}
+                  extraAction={
+                    privileged
+                      ? { label: 'Mark paid', onClick: (id: string) => decide('expense', id, 'paid') }
+                      : undefined
+                  }
+                />
+              )}
+              {inboxTab === 'bank' && privileged && (
+                <InboxList
+                  empty="No pending bank changes"
+                  items={inbox.pending_bank_changes.map((p) => ({
+                    id: p.id,
+                    title: p.full_name,
+                    detail: 'Bank details update',
+                    meta: `A/c ${p.pending_bank_account || '—'} · ${p.pending_bank_ifsc || '—'}`,
+                  }))}
+                  onApprove={(id) => decide('bank', id, 'approved')}
+                  onReject={(id) => decide('bank', id, 'rejected')}
+                />
+              )}
+            </div>
+          )}
         </SectionCard>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <SectionCard title="Directory" className="xl:col-span-8">
+        <SectionCard
+          title="Directory"
+          subtitle="Open a person to edit profile, leave, bank, and documents"
+          icon={<UsersRound className="w-4 h-4" />}
+          className="xl:col-span-8"
+          badge={
+            <span className="rounded-full bg-bg border border-border px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted">
+              {directory.length}
+            </span>
+          }
+        >
           {byDepartment.length === 0 ? (
-            <p className="text-sm text-[#94A3B8]">No staff yet. Create logins in Settings → People.</p>
+            <EmptyState
+              title="No staff yet"
+              subtitle="Create worker logins in Settings → People, then set department and salary here."
+              className="border-0 shadow-none bg-transparent p-6"
+            />
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {byDepartment.map(([dept, people]) => (
-                <div key={dept}>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-[#94A3B8] mb-2">
-                    {dept}
-                  </h3>
-                  <ul className="divide-y divide-[#F1F5F9] border border-[#E2E8F0] rounded-lg overflow-hidden">
+                <div key={dept} className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-subtle">
+                      {dept}
+                    </h3>
+                    <span className="text-[11px] font-medium tabular-nums text-subtle">
+                      {people.length}
+                    </span>
+                  </div>
+                  <ul className="grid gap-2 sm:grid-cols-2">
                     {people.map((p) => (
                       <li key={p.id}>
                         <button
                           type="button"
                           onClick={() => openProfile(p)}
-                          className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] flex justify-between gap-2"
+                          className="group flex w-full items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3 text-left transition-colors hover:border-brand-red-500/35 hover:bg-brand-red-tint/40"
                         >
-                          <div>
-                            <p className="text-sm font-medium text-[#0F172A]">{p.full_name}</p>
-                            <p className="text-xs text-[#64748B]">
-                              {p.job_title || p.role}
-                              {p.reports_to_name ? ` · reports to ${p.reports_to_name}` : ''}
+                          <Avatar name={p.full_name} size="md" className="shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-text">
+                              {p.full_name}
                             </p>
+                            <p className="truncate text-xs text-muted">
+                              {p.job_title || p.role}
+                              {p.reports_to_name ? ` · ${p.reports_to_name}` : ''}
+                            </p>
+                            {p.leave_balance && (
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                <span className="rounded-md bg-bg border border-border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted">
+                                  CL{' '}
+                                  {formatLeaveHoursDays(
+                                    p.leave_balance.casual_remaining_hours ??
+                                      p.leave_balance.casual_remaining * WORK_HOURS_PER_DAY,
+                                    p.leave_balance.casual_remaining
+                                  )}
+                                </span>
+                                <span className="rounded-md bg-bg border border-border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted">
+                                  SL{' '}
+                                  {formatLeaveHoursDays(
+                                    p.leave_balance.sick_remaining_hours ??
+                                      p.leave_balance.sick_remaining * WORK_HOURS_PER_DAY,
+                                    p.leave_balance.sick_remaining
+                                  )}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          {p.leave_balance && (
-                            <span className="text-xs text-[#94A3B8] whitespace-nowrap">
-                              CL{' '}
-                              {formatLeaveHoursDays(
-                                p.leave_balance.casual_remaining_hours ??
-                                  p.leave_balance.casual_remaining * WORK_HOURS_PER_DAY,
-                                p.leave_balance.casual_remaining
-                              )}{' '}
-                              · SL{' '}
-                              {formatLeaveHoursDays(
-                                p.leave_balance.sick_remaining_hours ??
-                                  p.leave_balance.sick_remaining * WORK_HOURS_PER_DAY,
-                                p.leave_balance.sick_remaining
-                              )}
-                            </span>
-                          )}
+                          <ChevronRight className="h-4 w-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-brand-red-500" />
                         </button>
                       </li>
                     ))}
@@ -490,17 +611,27 @@ export default function StaffAdminPage() {
         </SectionCard>
 
         <div className="space-y-4 xl:col-span-4">
-          <SectionCard title="Team leave (this month)">
+          <SectionCard
+            title="Team leave"
+            subtitle="Approved this month"
+            icon={<Plane className="w-4 h-4" />}
+          >
             {teamLeave.length === 0 ? (
-              <p className="text-sm text-[#94A3B8]">No approved leave this month.</p>
+              <p className="text-sm text-muted py-2">No one is on approved leave this month.</p>
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-2">
                 {teamLeave.map((l) => (
-                  <li key={l.id} className="flex justify-between gap-2">
-                    <span>{l.user_name}</span>
-                    <span className="text-[#64748B] text-xs">
+                  <li
+                    key={l.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-bg/50 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-text">{l.user_name}</p>
+                      <p className="text-[11px] text-muted capitalize">{l.leave_type}</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold tabular-nums text-muted">
                       {formatDate(l.start_date)}
-                      {l.half_day ? ' (½)' : ''}
+                      {l.half_day ? ' · ½' : ''}
                     </span>
                   </li>
                 ))}
@@ -508,20 +639,33 @@ export default function StaffAdminPage() {
             )}
           </SectionCard>
 
-          <SectionCard title="Holidays">
+          <SectionCard
+            title="Holidays"
+            subtitle="Company calendar"
+            icon={<CalendarDays className="w-4 h-4" />}
+            action={
+              privileged
+                ? { label: 'Add', onClick: () => setHolidayOpen(true) }
+                : undefined
+            }
+          >
             {holidays.length === 0 ? (
-              <p className="text-sm text-[#94A3B8]">No holidays listed.</p>
+              <p className="text-sm text-muted py-2">No holidays listed yet.</p>
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-2">
                 {holidays.map((h) => (
-                  <li key={h.id} className="flex justify-between gap-2 items-center">
-                    <span>
-                      {formatDate(h.holiday_date)} · {h.name}
-                    </span>
+                  <li
+                    key={h.id}
+                    className="flex items-start justify-between gap-2 rounded-lg border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text">{h.name}</p>
+                      <p className="text-[11px] text-muted">{formatDate(h.holiday_date)}</p>
+                    </div>
                     {privileged && (
                       <button
                         type="button"
-                        className="text-xs text-rose-600"
+                        className="shrink-0 text-[11px] font-semibold text-danger hover:underline cursor-pointer"
                         onClick={async () => {
                           try {
                             await staffApi.deleteHoliday(h.id);
@@ -540,15 +684,22 @@ export default function StaffAdminPage() {
             )}
           </SectionCard>
 
-          <SectionCard title="Notices">
+          <SectionCard
+            title="Notices"
+            subtitle="Team announcements"
+            icon={<Megaphone className="w-4 h-4" />}
+            action={
+              privileged ? { label: 'Post', onClick: () => setAnnOpen(true) } : undefined
+            }
+          >
             {announcements.length === 0 ? (
-              <p className="text-sm text-[#94A3B8]">No announcements.</p>
+              <p className="text-sm text-muted py-2">No announcements posted.</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-2.5">
                 {announcements.map((a) => (
-                  <li key={a.id}>
-                    <p className="text-sm font-medium text-[#0F172A]">{a.title}</p>
-                    <p className="text-xs text-[#64748B] line-clamp-2">{a.body}</p>
+                  <li key={a.id} className="rounded-lg border border-border bg-bg/40 px-3 py-2.5">
+                    <p className="text-sm font-semibold text-text">{a.title}</p>
+                    <p className="mt-0.5 text-xs text-muted line-clamp-2">{a.body}</p>
                   </li>
                 ))}
               </ul>
@@ -905,64 +1056,69 @@ export default function StaffAdminPage() {
   );
 }
 
-function InboxBlock({
-  title,
+function InboxList({
   empty,
   items,
   onApprove,
   onReject,
   extraAction,
 }: {
-  title: string;
   empty: string;
-  items: { id: string; label: string; meta: string }[];
+  items: { id: string; title: string; detail: string; meta: string }[];
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   extraAction?: { label: string; onClick: (id: string) => void };
 }) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-bg/50 px-4 py-6 text-center text-sm text-muted">
+        {empty}
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-lg border border-[#E2E8F0] p-3">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-[#94A3B8] mb-2">{title}</h4>
-      {items.length === 0 ? (
-        <p className="text-sm text-[#94A3B8]">{empty}</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex flex-wrap items-center justify-between gap-2 text-sm"
+    <ul className="space-y-2">
+      {items.map((item) => (
+        <li
+          key={item.id}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-3.5 py-3"
+        >
+          <div className="min-w-0 flex items-start gap-3">
+            <Avatar name={item.title} size="sm" className="shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-text">{item.title}</p>
+              <p className="truncate text-xs text-muted">{item.detail}</p>
+              <p className="mt-0.5 text-[11px] tabular-nums text-subtle">{item.meta}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-success/20 bg-success-tint text-success hover:bg-success hover:text-white transition-colors cursor-pointer"
+              onClick={() => onApprove(item.id)}
+              aria-label="Approve"
+              title="Approve"
             >
-              <div>
-                <p className="text-[#0F172A]">{item.label}</p>
-                <p className="text-xs text-[#64748B]">{item.meta}</p>
-              </div>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  className="p-1.5 rounded-md bg-emerald-50 text-emerald-700"
-                  onClick={() => onApprove(item.id)}
-                  aria-label="Approve"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  className="p-1.5 rounded-md bg-rose-50 text-rose-700"
-                  onClick={() => onReject(item.id)}
-                  aria-label="Reject"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                {extraAction && (
-                  <Button size="sm" variant="secondary" onClick={() => extraAction.onClick(item.id)}>
-                    {extraAction.label}
-                  </Button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+              <Check className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-danger/20 bg-danger-tint text-danger hover:bg-danger hover:text-white transition-colors cursor-pointer"
+              onClick={() => onReject(item.id)}
+              aria-label="Reject"
+              title="Reject"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            {extraAction && (
+              <Button size="sm" variant="secondary" onClick={() => extraAction.onClick(item.id)}>
+                {extraAction.label}
+              </Button>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

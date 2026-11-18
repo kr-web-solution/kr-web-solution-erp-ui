@@ -36,6 +36,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Tabs } from '@/components/ui/Tabs';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 const SUB_NAV = [
@@ -313,12 +314,7 @@ export default function SettingsCompanyPage() {
   ];
 
   if (isLoading || !settings) {
-    return (
-      <div className="w-full min-w-0 space-y-6 pb-12">
-        <div className="h-6 w-48 bg-slate-200 rounded animate-pulse" />
-        <div className="h-28 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading settings…" />;
   }
 
   return (

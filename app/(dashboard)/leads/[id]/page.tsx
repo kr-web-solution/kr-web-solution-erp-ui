@@ -33,6 +33,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 const STAGES: { key: LeadStatus; label: string }[] = [
@@ -161,16 +162,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   if (isLoading) {
-    return (
-      <div className="w-full min-w-0 space-y-6 pb-12">
-        <div className="h-6 w-48 bg-slate-200 rounded animate-pulse" />
-        <div className="h-28 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 h-80 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-          <div className="lg:col-span-4 h-80 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        </div>
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading lead…" />;
   }
 
   if (error || !lead) {

@@ -35,6 +35,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { Textarea } from '@/components/ui/Textarea';
 import { toast } from 'sonner';
 
@@ -131,17 +132,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   }, [invoices]);
 
   if (isLoading) {
-    return (
-      <div className="w-full min-w-0 space-y-6 pb-12">
-        <div className="h-6 w-48 bg-slate-200 rounded animate-pulse" />
-        <div className="h-28 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading client…" />;
   }
 
   if (error || !client) {

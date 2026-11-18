@@ -25,6 +25,7 @@ import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { PaperInvoice, InvoiceLineItem } from '@/components/ui/PaperInvoice';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 interface FormLineItem {
@@ -361,12 +362,7 @@ export function InvoiceEditor({
   }));
 
   if (isLoadingMeta) {
-    return (
-      <div className="space-y-4 pb-12">
-        <div className="h-8 w-48 bg-slate-200 rounded animate-pulse" />
-        <div className="h-64 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading invoice editor…" />;
   }
 
   return (

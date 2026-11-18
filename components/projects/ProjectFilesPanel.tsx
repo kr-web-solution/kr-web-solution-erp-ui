@@ -5,7 +5,7 @@ import { FileText } from 'lucide-react';
 import { projectsApi } from '@/lib/api/client';
 import { ProjectDocument } from '@/lib/types';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 const KIND_LABEL: Record<string, string> = {
@@ -42,10 +42,7 @@ export function ProjectFilesPanel({ projectId }: { projectId: string }) {
         <h2 className="text-sm font-semibold text-[#0F172A]">Project files</h2>
       </div>
       {loading ? (
-        <div className="p-4 space-y-2">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+        <LoadingAnimation label="Loading files…" className="py-10" />
       ) : docs.length === 0 ? (
         <div className="p-6">
           <EmptyState title="No files yet" subtitle="Quotation, agreement, and other files added with the project show up here." />

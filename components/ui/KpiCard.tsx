@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 
 export interface KpiCardProps {
   label: string;
@@ -73,7 +74,7 @@ export function KpiCard({
         </div>
         <div className="text-[22px] leading-7 font-bold text-text tabular-nums font-mono mt-1">
           {isLoading ? (
-            <div className="h-7 w-20 bg-neutral rounded animate-pulse" />
+            <LoadingAnimation size="sm" className="items-start gap-0 py-1" aria-label="Loading value" />
           ) : (
             value
           )}

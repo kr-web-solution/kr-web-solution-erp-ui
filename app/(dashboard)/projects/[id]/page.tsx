@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
 import { Tabs } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { ProjectDeliveryPanel } from '@/components/projects/ProjectDeliveryPanel';
 import { ProjectFilesPanel } from '@/components/projects/ProjectFilesPanel';
 import { ProjectFeaturesPanel } from '@/components/projects/ProjectFeaturesPanel';
@@ -504,16 +505,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   };
 
   if (isLoading) {
-    return (
-      <div className="w-full min-w-0 space-y-6 pb-12">
-        <div className="h-6 w-48 bg-slate-200 rounded animate-pulse" />
-        <div className="h-24 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 h-80 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-          <div className="lg:col-span-4 h-80 bg-white border border-[#E6E8EE] rounded-2xl animate-pulse" />
-        </div>
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading project…" />;
   }
 
   if (error || !project) {

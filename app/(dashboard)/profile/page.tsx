@@ -22,6 +22,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar } from '@/components/ui/Avatar';
 import { Input } from '@/components/ui/Input';
 import { FormField } from '@/components/ui/FormField';
+import { LoadingAnimation } from '@/components/ui/LoadingAnimation';
 import { toast } from 'sonner';
 
 export default function ProfilePage() {
@@ -40,11 +41,7 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   if (!user) {
-    return (
-      <div className="py-12 text-center text-xs text-[#64748B]">
-        Loading user profile...
-      </div>
-    );
+    return <LoadingAnimation fullPage label="Loading profile…" />;
   }
 
   // Password requirements
