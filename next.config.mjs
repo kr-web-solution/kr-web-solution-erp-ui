@@ -32,7 +32,7 @@ const nextConfig = {
   async rewrites() {
     // Browser never sees the backend host. Next proxies /api → Docker/internal API.
     // Dev:  http://127.0.0.1:8000
-    // Prod: http://kr-erp-api:8000  (docker compose service / container name)
+    // Prod: Dokploy API container name, e.g. http://…erpapi-l2an21:8000
     const internalApi = (process.env.API_INTERNAL_URL || 'http://127.0.0.1:8000').replace(
       /\/$/,
       ''
