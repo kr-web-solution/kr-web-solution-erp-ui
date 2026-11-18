@@ -474,7 +474,7 @@ export default function StaffAdminPage() {
                   empty="No pending leave requests"
                   items={inbox.pending_leave.map((l) => ({
                     id: l.id,
-                    title: l.user_name,
+                    title: l.user_name ?? 'Staff',
                     detail: `${l.leave_type}${l.half_day ? ' · half day' : ''}`,
                     meta: `${formatDate(l.start_date)} → ${formatDate(l.end_date)}`,
                   }))}
@@ -487,8 +487,8 @@ export default function StaffAdminPage() {
                   empty="No pending attendance corrections"
                   items={inbox.pending_corrections.map((c) => ({
                     id: c.id,
-                    title: c.user_name,
-                    detail: c.correction_reason,
+                    title: c.user_name ?? 'Staff',
+                    detail: c.correction_reason ?? '—',
                     meta: formatDate(c.work_date),
                   }))}
                   onApprove={(id) => decide('correction', id, 'approved')}
@@ -500,8 +500,8 @@ export default function StaffAdminPage() {
                   empty="No pending staff expenses"
                   items={inbox.pending_expenses.map((e) => ({
                     id: e.id,
-                    title: e.user_name,
-                    detail: e.category,
+                    title: e.user_name ?? 'Staff',
+                    detail: e.category ?? 'Expense',
                     meta: `${formatINR(e.amount_paise)} · ${formatDate(e.expense_date)}`,
                   }))}
                   onApprove={(id) => decide('expense', id, 'approved')}

@@ -584,7 +584,7 @@ export default function DashboardPage() {
                         month: 'short',
                         year: 'numeric',
                       });
-                      let href = routes.dashboard;
+                      let href: string = routes.dashboard;
                       if (item.type === 'project') href = routes.project(item.id);
                       else if (item.type === 'lead') href = routes.lead(item.id);
                       else if (item.type === 'invoice') href = routes.invoice(item.id);
@@ -665,7 +665,7 @@ export default function DashboardPage() {
                 </div>
               ) : summary?.recent_items?.length ? (
                 summary.recent_items.map((item) => {
-                  let href = routes.dashboard;
+                  let href: string = routes.dashboard;
                   if (item.type === 'project') href = routes.project(item.id);
                   else if (item.type === 'lead') href = routes.lead(item.id);
                   else if (item.type === 'invoice') href = routes.invoice(item.id);
