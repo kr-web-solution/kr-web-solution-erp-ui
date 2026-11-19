@@ -4,8 +4,8 @@ import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { projectsApi, invoicesApi, engagementsApi } from '@/lib/api/client';
-import { Project, Invoice, ProjectStatus, EngagementListItem, EngagementDetail } from '@/lib/types';
+import { projectsApi, invoicesApi, engagementsApi, clientsApi } from '@/lib/api/client';
+import { Project, Invoice, ProjectStatus, EngagementListItem, EngagementDetail, Client } from '@/lib/types';
 import { stageLabel } from '@/lib/workflow';
 import { isPrivileged } from '@/lib/roles';
 import {
@@ -19,6 +19,7 @@ import {
   Download,
   Send,
   Pencil,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -28,6 +29,7 @@ import { CopyButton } from '@/components/ui/CopyButton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { Tabs } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -172,6 +174,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [showGoLivePrompt, setShowGoLivePrompt] = useState(false);
   const [goLiveDate, setGoLiveDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [pendingStatusChange, setPendingStatusChange] = useState<ProjectStatus | null>(null);
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [addClientId, setAddClientId] = useState('');
+  const [clientActionBusy, setClientActionBusy] = useState(false);
+
+  const projectClients = project?.clients?.length
+    ? project.clients
+    : project
+      ? [{ id: project.client_id, name: project.client_name || 'Client', is_primary: true }]
+      : [];
 
   const fetchProjectData = async () => {
     setIsLoading(true);
@@ -210,6 +222,53 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     fetchProjectData();
   }, [projectId]);
+
+  const openAddClient = async () => {
+    setShowAddClient(true);
+    setAddClientId('');
+    try {
+      const list = await clientsApi.list();
+      setAllClients(list);
+    } catch {
+      toast.error('Failed to load clients');
+    }
+  };
+
+  const handleAddClient = async () => {
+    if (!addClientId) {
+      toast.error('Select a client to add');
+      return;
+    }
+    setClientActionBusy(true);
+    try {
+      const updated = await projectsApi.addClient(projectId, addClientId);
+      setProject(updated);
+      setShowAddClient(false);
+      setAddClientId('');
+      toast.success('Client added to project');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add client');
+    } finally {
+      setClientActionBusy(false);
+    }
+  };
+
+  const handleRemoveClient = async (clientId: string, clientName: string) => {
+    if (projectClients.length <= 1) {
+      toast.error('A project must keep at least one client');
+      return;
+    }
+    setClientActionBusy(true);
+    try {
+      const updated = await projectsApi.removeClient(projectId, clientId);
+      setProject(updated);
+      toast.success(`Removed ${clientName} from project`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Cannot remove client');
+    } finally {
+      setClientActionBusy(false);
+    }
+  };
 
   const handleStatusSelect = (newStatus: ProjectStatus) => {
     if (newStatus === 'stopped' && project?.maintenance_status === 'active') {
@@ -398,7 +457,27 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       toast.success('Project deleted successfully');
       router.push('/projects');
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to delete project.');
+      setShowDeletePrompt(false);
+      const data = err?.data;
+      const invCount = data?.invoice_count;
+      const planCount = data?.plan_count;
+      if (err?.status === 409 && (invCount != null || planCount != null)) {
+        const bits: string[] = [];
+        if (invCount) bits.push(`${invCount} invoice(s)`);
+        if (planCount) bits.push(`${planCount} maintenance plan(s)`);
+        toast.error(data?.detail || err?.message || 'Cannot delete project', {
+          description: bits.length
+            ? `Remove ${bits.join(' and ')} first, then try again.`
+            : undefined,
+          action: {
+            label: 'View invoices',
+            onClick: () => setActiveTab('invoices'),
+          },
+          duration: 10000,
+        });
+      } else {
+        toast.error(err?.message || 'Failed to delete project.');
+      }
     }
   };
 
@@ -578,14 +657,22 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               </span>
             )}
           </div>
-          <p className="text-xs text-[#64748B] mt-1 flex items-center gap-1.5">
-            <span>Client:</span>
-            <Link
-              href={`/clients/${project.client_id}`}
-              className="font-semibold text-[#0F172A] hover:text-[#E32B2B] hover:underline"
-            >
-              {project.client_name || 'Client Account'}
-            </Link>
+          <p className="text-xs text-[#64748B] mt-1 flex items-center gap-1.5 flex-wrap">
+            <span>{projectClients.length > 1 ? 'Clients:' : 'Client:'}</span>
+            {projectClients.map((c, i) => (
+              <span key={c.id} className="inline-flex items-center gap-1">
+                {i > 0 && <span className="text-[#94A3B8]">·</span>}
+                <Link
+                  href={`/clients/${c.id}`}
+                  className="font-semibold text-[#0F172A] hover:text-[#E32B2B] hover:underline"
+                >
+                  {c.name}
+                </Link>
+                {c.is_primary && projectClients.length > 1 && (
+                  <span className="text-[10px] font-semibold text-[#64748B]">(primary)</span>
+                )}
+              </span>
+            ))}
           </p>
         </div>
 
@@ -758,19 +845,57 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </section>
 
-            <section className="rounded-xl border border-[#E6E8EE] bg-white p-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <Avatar name={project.client_name || 'Client'} size="md" />
-                <div className="min-w-0">
-                  <p className="text-[11px] text-[#64748B]">Client</p>
-                  <Link href={`/clients/${project.client_id}`} className="text-sm font-bold text-[#0F172A] hover:text-[#E32B2B] truncate block">
-                    {project.client_name || 'Client'}
-                  </Link>
-                </div>
+            <section className="rounded-xl border border-[#E6E8EE] bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-[#64748B]">
+                  Clients{projectClients.length > 1 ? ` (${projectClients.length})` : ''}
+                </p>
+                {isFounder && (
+                  <button
+                    type="button"
+                    onClick={openAddClient}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#E32B2B] hover:text-[#C81F26]"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add
+                  </button>
+                )}
               </div>
-              <Link href={`/clients/${project.client_id}`} className="text-xs font-semibold text-[#E32B2B] shrink-0">
-                Profile
-              </Link>
+              <ul className="space-y-2">
+                {projectClients.map((c) => (
+                  <li key={c.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar name={c.name} size="sm" />
+                      <div className="min-w-0">
+                        <Link
+                          href={`/clients/${c.id}`}
+                          className="text-sm font-bold text-[#0F172A] hover:text-[#E32B2B] truncate block"
+                        >
+                          {c.name}
+                        </Link>
+                        {c.is_primary && (
+                          <span className="text-[10px] text-[#64748B]">Primary</span>
+                        )}
+                      </div>
+                    </div>
+                    {isFounder && (
+                      <button
+                        type="button"
+                        disabled={clientActionBusy || projectClients.length <= 1}
+                        title={
+                          projectClients.length <= 1
+                            ? 'A project must keep at least one client'
+                            : `Remove ${c.name}`
+                        }
+                        onClick={() => handleRemoveClient(c.id, c.name)}
+                        className="p-1 rounded-md text-[#94A3B8] hover:text-[#B91C1C] hover:bg-[#FFF1F0] disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </section>
           </div>
 
@@ -1213,6 +1338,52 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           onChange={(e) => setGoLiveDate(e.target.value)}
           disabled={isGoingLive}
         />
+      </Modal>
+
+      <Modal
+        isOpen={showAddClient}
+        onClose={() => !clientActionBusy && setShowAddClient(false)}
+        size="sm"
+        title="Add client to project"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={clientActionBusy}
+              onClick={() => setShowAddClient(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              isLoading={clientActionBusy}
+              onClick={handleAddClient}
+            >
+              Add client
+            </Button>
+          </>
+        }
+      >
+        <FormField label="Client" required hint="Project keeps all linked clients; at least one is required.">
+          <Select
+            value={addClientId}
+            onChange={(e) => setAddClientId(e.target.value)}
+          >
+            <option value="" disabled>
+              Select a client...
+            </option>
+            {allClients
+              .filter((c) => !projectClients.some((pc) => pc.id === c.id))
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.primary_contact_name ? ` (${c.primary_contact_name})` : ''}
+                </option>
+              ))}
+          </Select>
+        </FormField>
       </Modal>
     </div>
   );

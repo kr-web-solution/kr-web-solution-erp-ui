@@ -69,7 +69,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       ]);
 
       setClient(cData);
-      setProjects(pList.filter((p) => p.client_id === clientId));
+      setProjects(
+        pList.filter(
+          (p) =>
+            p.client_id === clientId ||
+            (p.client_ids || []).includes(clientId) ||
+            (p.clients || []).some((c) => c.id === clientId)
+        )
+      );
       setInvoices(iList.filter((inv) => inv.client_id === clientId));
       setNotes(nList);
     } catch (err: any) {

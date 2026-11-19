@@ -135,11 +135,19 @@ export interface MaintenanceConfig {
   notes?: string;
 }
 
+export interface ProjectClientBrief {
+  id: string;
+  name: string;
+  is_primary?: boolean;
+}
+
 export interface Project {
   id: string;
   name: string;
   client_id: string;
   client_name?: string | null;
+  client_ids?: string[];
+  clients?: ProjectClientBrief[];
   description?: string | null;
   start_date?: string | null;
   end_date?: string | null;

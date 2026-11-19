@@ -344,7 +344,8 @@ export const projectsApi = {
 
   create: (data: {
     name: string;
-    client_id: string;
+    client_id?: string;
+    client_ids?: string[];
     description?: string;
     start_date?: string;
     end_date?: string;
@@ -357,6 +358,17 @@ export const projectsApi = {
     apiClient<Project>('/api/v1/projects', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  addClient: (projectId: string, clientId: string) =>
+    apiClient<Project>(`/api/v1/projects/${projectId}/clients`, {
+      method: 'POST',
+      body: JSON.stringify({ client_id: clientId }),
+    }),
+
+  removeClient: (projectId: string, clientId: string) =>
+    apiClient<Project>(`/api/v1/projects/${projectId}/clients/${clientId}`, {
+      method: 'DELETE',
     }),
 
   start: (id: string) =>

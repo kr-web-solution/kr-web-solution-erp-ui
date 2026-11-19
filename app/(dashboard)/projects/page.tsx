@@ -67,12 +67,23 @@ export default function ProjectsPage() {
   const [workers, setWorkers] = useState<User[]>([]);
   const [formData, setFormData] = useState({
     name: '',
-    client_id: '',
+    client_ids: [] as string[],
     description: '',
     budget_rupees: 0,
     development_days: '',
     worker_ids: [] as string[],
   });
+
+  const projectClientLabel = (p: Project) => {
+    const names = (p.clients || []).map((c) => c.name).filter(Boolean);
+    if (names.length) return names.join(', ');
+    return p.client_name || 'Client';
+  };
+
+  const projectHasClient = (p: Project, clientId: string) =>
+    p.client_id === clientId ||
+    (p.client_ids || []).includes(clientId) ||
+    (p.clients || []).some((c) => c.id === clientId);
 
   // Maintenance billing toggle state
   const [hasMaintenance, setHasMaintenance] = useState(false);
@@ -124,7 +135,7 @@ export default function ProjectsPage() {
     setProjectDocs(defaultProjectDocs());
     setFormData({
       name: '',
-      client_id: '',
+      client_ids: [],
       description: '',
       budget_rupees: 0,
       development_days: '',
@@ -143,7 +154,7 @@ export default function ProjectsPage() {
       setClients(cList);
       setWorkers(uList.filter((u) => u.role === 'worker' && u.is_active));
       if (cList.length > 0) {
-        setFormData((prev) => ({ ...prev, client_id: cList[0].id }));
+        setFormData((prev) => ({ ...prev, client_ids: [cList[0].id] }));
       }
     } catch (err: any) {
       setModalError('Failed to load clients or workers.');
@@ -161,9 +172,14 @@ export default function ProjectsPage() {
     try {
       const newClient = await clientsApi.create(newClientData);
 
-      // Update clients list and auto-select
+      // Update clients list and auto-select (add to multi-select)
       setClients((prev) => [newClient, ...prev]);
-      setFormData((prev) => ({ ...prev, client_id: newClient.id }));
+      setFormData((prev) => ({
+        ...prev,
+        client_ids: prev.client_ids.includes(newClient.id)
+          ? prev.client_ids
+          : [...prev.client_ids, newClient.id],
+      }));
       setIsNewClientModalOpen(false);
       setNewClientData(emptyClientForm());
       toast.success(`Client "${newClient.name}" created and selected`);
@@ -180,8 +196,8 @@ export default function ProjectsPage() {
       setModalError('Project name is required.');
       return;
     }
-    if (!formData.client_id) {
-      setModalError('Please select a client.');
+    if (!formData.client_ids.length) {
+      setModalError('Select at least one client.');
       return;
     }
 
@@ -206,7 +222,8 @@ export default function ProjectsPage() {
       const duration = Number(formData.development_days);
       const created = await projectsApi.create({
         name: formData.name,
-        client_id: formData.client_id,
+        client_ids: formData.client_ids,
+        client_id: formData.client_ids[0],
         description: formData.description || undefined,
         budget_paise: budgetPaise,
         development_days: Number.isFinite(duration) && duration > 0 ? duration : undefined,
@@ -241,12 +258,12 @@ export default function ProjectsPage() {
   };
 
   const matchesSearch = (p: Project) => {
-    if (clientFilter !== 'all' && p.client_id !== clientFilter) return false;
+    if (clientFilter !== 'all' && !projectHasClient(p, clientFilter)) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
       p.name.toLowerCase().includes(q) ||
-      (p.client_name && p.client_name.toLowerCase().includes(q)) ||
+      (projectClientLabel(p).toLowerCase().includes(q)) ||
       (p.description && p.description.toLowerCase().includes(q))
     );
   };
@@ -279,7 +296,7 @@ export default function ProjectsPage() {
     const rows = filteredProjects.map((p) => [
       p.id,
       `"${p.name.replace(/"/g, '""')}"`,
-      `"${(p.client_name || '').replace(/"/g, '""')}"`,
+      `"${projectClientLabel(p).replace(/"/g, '""')}"`,
       p.status,
       p.start_date || '',
       p.end_date || '',
@@ -318,7 +335,7 @@ export default function ProjectsPage() {
           </Link>
           <div className="text-xs text-[#64748B] mt-0.5 flex items-center gap-1.5">
             <Building2 className="w-3.5 h-3.5 text-[#94A3B8]" />
-            <span>{row.client_name || 'Client'}</span>
+            <span>{projectClientLabel(row)}</span>
           </div>
         </div>
       ),
@@ -644,7 +661,7 @@ export default function ProjectsPage() {
                   {/* Top Bar: Client name & Status Badge */}
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="text-xs font-semibold text-[#64748B] truncate uppercase tracking-wider">
-                      {project.client_name || 'Client'}
+                      {projectClientLabel(project)}
                     </span>
                     <StatusBadge status={project.status} type="project" />
                   </div>
@@ -759,7 +776,7 @@ export default function ProjectsPage() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
                 <label className="text-xs font-semibold text-[#0F172A]">
-                  Client<span className="text-[#E32B2B] ml-0.5">*</span>
+                  Clients<span className="text-[#E32B2B] ml-0.5">*</span>
                 </label>
                 <button
                   type="button"
@@ -770,19 +787,20 @@ export default function ProjectsPage() {
                   New client
                 </button>
               </div>
-              <Select
-                value={formData.client_id}
-                onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-              >
-                <option value="" disabled>
-                  Select client account...
-                </option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.primary_contact_name ? `(${c.primary_contact_name})` : ''}
-                  </option>
-                ))}
-              </Select>
+              <MultiSelect
+                options={clients.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                  subtitle: c.primary_contact_name || undefined,
+                }))}
+                selectedValues={formData.client_ids}
+                onChange={(vals) => setFormData({ ...formData, client_ids: vals })}
+                placeholder="Select at least one client..."
+                emptyText="Select at least one client..."
+              />
+              <p className="text-[11px] text-[#64748B]">
+                A project needs one or more clients. The first selected becomes the primary.
+              </p>
             </div>
 
             {/* Description */}
