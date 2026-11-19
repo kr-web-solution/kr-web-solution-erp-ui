@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { clientsApi, projectsApi, invoicesApi, settingsApi } from '@/lib/api/client';
-import { Client, Invoice, Project } from '@/lib/types';
+import { Client, CompanySettings, Invoice, Project } from '@/lib/types';
 import {
   ArrowLeft,
   Plus,
@@ -85,6 +85,7 @@ export function InvoiceEditor({
   const [dueDate, setDueDate] = useState(dueDateDefault);
   const [taxRatePercent, setTaxRatePercent] = useState(0);
   const [gstEnabled, setGstEnabled] = useState(false);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [notes, setNotes] = useState('Payment due within 15 days of invoice date.');
   const [items, setItems] = useState<FormLineItem[]>([
     {
@@ -109,6 +110,7 @@ export function InvoiceEditor({
         ]);
         setClients(cList);
         setProjects(pList);
+        if (st) setCompanySettings(st);
         const gstOn = !!st?.gst_enabled;
         setGstEnabled(gstOn);
         const defaultRate = gstOn ? Number(st?.default_tax_rate ?? 0) : 0;
@@ -714,17 +716,54 @@ export function InvoiceEditor({
             issueDate={issueDate}
             dueDate={dueDate}
             clientName={selectedClient?.name || 'Selected Client'}
+            clientAttn={selectedClient?.primary_contact_name || undefined}
+            clientDesignation={selectedClient?.designation || undefined}
+            clientEmail={
+              selectedClient?.contact_email || selectedClient?.email || undefined
+            }
+            clientPhone={
+              selectedClient?.contact_phone || selectedClient?.phone || undefined
+            }
             clientAddress={selectedClient?.address || undefined}
+            clientCity={selectedClient?.city || undefined}
+            clientState={selectedClient?.state || undefined}
+            clientPincode={selectedClient?.pincode || undefined}
             clientGstin={selectedClient?.gstin || undefined}
+            companyName={companySettings?.company_name || undefined}
+            companyAddress={companySettings?.company_address || undefined}
+            companyGstin={
+              gstEnabled ? companySettings?.company_gstin || undefined : undefined
+            }
+            companyEmail={companySettings?.smtp_from_email || undefined}
+            companyPhone={companySettings?.company_phone || undefined}
+            companyWebsite={companySettings?.company_website || undefined}
+            companyTagline={companySettings?.company_tagline || undefined}
+            logoSrc={companySettings?.company_logo_url || '/brand/krws-mark.png'}
+            projectName={selectedProject?.name || undefined}
+            projectRef={
+              projectId ? projectId.replace('prj_', 'PRJ-').toUpperCase() : undefined
+            }
+            coversFrom={isMaintenance ? coverageStart : undefined}
+            coversTo={isMaintenance ? amcEnd : undefined}
+            invoiceType={existingInvoice?.invoice_type || invoiceType}
             items={previewItems}
             subtotalPaise={subtotalPaise}
             taxPaise={taxPaise}
             taxRatePercent={taxRatePercent}
             totalPaise={totalPaise}
             status={existingInvoice?.status || 'draft'}
-            invoiceType={existingInvoice?.invoice_type}
             isPaid={existingInvoice?.status === 'paid'}
             notes={notes}
+            terms={companySettings?.payment_terms || undefined}
+            bankDetails={{
+              beneficiaryName: companySettings?.bank_beneficiary_name,
+              bankName: companySettings?.bank_name,
+              accountNumber: companySettings?.bank_account_number,
+              ifsc: companySettings?.bank_ifsc,
+              upiId: companySettings?.bank_upi_id,
+              blob: companySettings?.bank_upi_details,
+            }}
+            upiQrSrc={companySettings?.bank_upi_qr_url || undefined}
           />
         </div>
       </div>

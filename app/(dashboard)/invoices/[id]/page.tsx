@@ -420,7 +420,28 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             issueDate={invoice.issue_date}
             dueDate={invoice.due_date}
             clientName={invoice.client_name || 'Client Account'}
+            clientAttn={invoice.client_attn || undefined}
+            clientDesignation={invoice.client_designation || undefined}
+            clientEmail={invoice.client_email || undefined}
+            clientPhone={invoice.client_phone || undefined}
+            clientAddress={invoice.client_address || undefined}
+            clientCity={invoice.client_city || undefined}
+            clientState={invoice.client_state || undefined}
+            clientPincode={invoice.client_pincode || undefined}
+            clientGstin={invoice.client_gstin || undefined}
+            companyName={invoice.company_name || undefined}
+            companyAddress={invoice.company_address || undefined}
+            companyGstin={invoice.company_gstin || undefined}
+            companyEmail={invoice.company_email || undefined}
+            companyPhone={invoice.company_phone || undefined}
+            companyWebsite={invoice.company_website || undefined}
+            companyTagline={invoice.company_tagline || undefined}
+            logoSrc={invoice.company_logo_url || '/brand/krws-mark.png'}
             projectName={invoice.project_name || undefined}
+            projectRef={invoice.project_ref || undefined}
+            ledger={invoice.ledger || undefined}
+            coversFrom={invoice.covers_from || undefined}
+            coversTo={invoice.covers_to || undefined}
             invoiceType={invoice.invoice_type}
             items={previewItems}
             subtotalPaise={invoice.subtotal_paise || 0}
@@ -429,7 +450,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             totalPaise={invoice.total_paise || 0}
             status={invoice.status}
             isPaid={isPaid}
+            paidAt={invoice.paid_at || undefined}
+            parentInvoiceNumber={invoice.parent_invoice_number || undefined}
             notes={invoice.notes || undefined}
+            terms={invoice.payment_terms || undefined}
+            bankDetails={{
+              beneficiaryName: invoice.payment_bank_beneficiary_name,
+              bankName: invoice.payment_bank_name,
+              accountNumber: invoice.payment_bank_account_number,
+              ifsc: invoice.payment_bank_ifsc,
+              upiId: invoice.payment_upi_id,
+              blob: invoice.payment_bank_upi_details,
+            }}
+            upiQrSrc={qrSrc || undefined}
           />
         </div>
 

@@ -578,6 +578,39 @@ export default function SettingsCompanyPage() {
                   />
                 </FormField>
 
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <FormField label="Company phone" hint="Shown on invoice header">
+                    <Input
+                      placeholder="+91 …"
+                      value={settings.company_phone || ''}
+                      onChange={(e) => {
+                        setSettings({ ...settings, company_phone: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                    />
+                  </FormField>
+                  <FormField label="Website">
+                    <Input
+                      placeholder="www.krwebsolution.com"
+                      value={settings.company_website || ''}
+                      onChange={(e) => {
+                        setSettings({ ...settings, company_website: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                    />
+                  </FormField>
+                  <FormField label="Tagline">
+                    <Input
+                      placeholder="Web Development | Cloud | Software Solutions"
+                      value={settings.company_tagline || ''}
+                      onChange={(e) => {
+                        setSettings({ ...settings, company_tagline: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                    />
+                  </FormField>
+                </div>
+
                 <div className="space-y-4 border-t border-[#E6E8EE] pt-4">
                   <h3 className="text-xs font-bold tracking-wider text-[#0F172A] uppercase">
                     Bank Account, UPI &amp; Wire Payment Instructions

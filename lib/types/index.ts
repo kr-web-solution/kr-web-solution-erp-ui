@@ -255,7 +255,8 @@ export type InvoiceType =
   | 'balance'
   | 'hosting'
   | 'services'
-  | 'licensing';
+  | 'licensing'
+  | 'mixed';
 
 export interface InvoiceItem {
   id?: string;
@@ -263,16 +264,28 @@ export interface InvoiceItem {
   quantity: number;
   unit_rate_paise: number;
   amount_paise?: number;
+  line_kind?: string | null;
 }
 
 export interface Invoice {
   id: string;
   invoice_number: string;
   invoice_type: InvoiceType;
+  ledger?: string | null;
   client_id: string;
   client_name?: string | null;
+  client_attn?: string | null;
+  client_designation?: string | null;
+  client_email?: string | null;
+  client_phone?: string | null;
+  client_address?: string | null;
+  client_city?: string | null;
+  client_state?: string | null;
+  client_pincode?: string | null;
+  client_gstin?: string | null;
   project_id?: string | null;
   project_name?: string | null;
+  project_ref?: string | null;
   status: InvoiceStatus;
   issue_date: string;
   due_date: string;
@@ -290,6 +303,7 @@ export interface Invoice {
   paid_at?: string | null;
   period_key?: string | null;
   parent_invoice_id?: string | null;
+  parent_invoice_number?: string | null;
   reminder_count?: number;
   last_reminder_at?: string | null;
   overdue_notified_at?: string | null;
@@ -313,6 +327,15 @@ export interface Invoice {
   payment_bank_ifsc?: string | null;
   payment_bank_upi_details?: string | null;
   gst_enabled?: boolean;
+  company_name?: string | null;
+  company_address?: string | null;
+  company_gstin?: string | null;
+  company_email?: string | null;
+  company_phone?: string | null;
+  company_website?: string | null;
+  company_tagline?: string | null;
+  company_logo_url?: string | null;
+  payment_terms?: string | null;
 }
 
 export interface RecurringInvoice {
@@ -384,6 +407,9 @@ export interface CompanySettings {
   company_address?: string | null;
   company_gstin?: string | null;
   company_logo_url?: string | null;
+  company_phone?: string | null;
+  company_website?: string | null;
+  company_tagline?: string | null;
   invoice_prefix: string;
   invoice_next_number: number;
   invoice_sequences?: Record<string, number>;
