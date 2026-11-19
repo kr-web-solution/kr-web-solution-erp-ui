@@ -155,7 +155,14 @@ export function InvoiceEditor({
 
   useEffect(() => {
     if (clientId) {
-      setFilteredProjects(projects.filter((p) => p.client_id === clientId));
+      setFilteredProjects(
+        projects.filter(
+          (p) =>
+            p.client_id === clientId ||
+            (p.client_ids || []).includes(clientId) ||
+            (p.clients || []).some((c) => c.id === clientId)
+        )
+      );
     } else {
       setFilteredProjects([]);
     }
@@ -269,6 +276,16 @@ export function InvoiceEditor({
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, [field]: val } : it)));
   };
 
+  const projectBelongsToClient = (pid: string, cid: string) => {
+    const p = projects.find((x) => x.id === pid);
+    if (!p) return false;
+    return (
+      p.client_id === cid ||
+      (p.client_ids || []).includes(cid) ||
+      (p.clients || []).some((c) => c.id === cid)
+    );
+  };
+
   const handleSubmit = async (andSendEmail: boolean) => {
     if (!clientId) {
       setError('Please select a client account.');
@@ -276,6 +293,10 @@ export function InvoiceEditor({
     }
     if (!projectId) {
       setError('Please link this invoice to a project.');
+      return;
+    }
+    if (!projectBelongsToClient(projectId, clientId)) {
+      setError('Selected project is not linked to this client.');
       return;
     }
 
@@ -292,7 +313,6 @@ export function InvoiceEditor({
     const coverEnd = addMonthsMinusDay(coverStart, safeMonths);
     const payload: Record<string, unknown> = {
       invoice_type: isMaintenance ? 'amc' : invoiceType === 'project' ? 'custom_dev' : invoiceType,
-      project_id: projectId,
       issue_date: issueDate,
       due_date: dueDate,
       tax_rate_percent: taxRatePercent,
@@ -303,6 +323,9 @@ export function InvoiceEditor({
         unit_rate_paise: Math.round(it.unit_rate_rupees * 100),
       })),
     };
+    if (!isEdit) {
+      payload.project_id = projectId;
+    }
     if (isMaintenance) {
       payload.period_months = safeMonths;
       payload.covers_from = coverStart;
@@ -448,7 +471,10 @@ export function InvoiceEditor({
               <FormField label="Client Account" required>
                 <Select
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
+                  onChange={(e) => {
+                    setClientId(e.target.value);
+                    setProjectId('');
+                  }}
                   disabled={isEdit}
                 >
                   <option value="" disabled>
@@ -463,7 +489,11 @@ export function InvoiceEditor({
               </FormField>
 
               <FormField label="Project" required>
-                <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <Select
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  disabled={isEdit}
+                >
                   <option value="">Select project...</option>
                   {filteredProjects.map((p) => (
                     <option key={p.id} value={p.id}>
