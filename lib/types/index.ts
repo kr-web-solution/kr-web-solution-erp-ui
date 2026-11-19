@@ -235,7 +235,14 @@ export interface ProjectFeature {
   docs: ProjectFeatureDoc[];
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'void';
+export type InvoiceStatus =
+  | 'draft'
+  | 'sent'
+  | 'paid'
+  | 'overdue'
+  | 'proof_pending'
+  | 'cancelled'
+  | 'void';
 export type InvoiceType =
   | 'project'
   | 'maintenance'
@@ -289,6 +296,12 @@ export interface Invoice {
   email_error?: string | null;
   email_retry_count?: number;
   last_emailed_at?: string | null;
+  payment_proof_filename?: string | null;
+  payment_proof_content_type?: string | null;
+  payment_proof_uploaded_at?: string | null;
+  payment_proof_note?: string | null;
+  has_payment_proof?: boolean;
+  payment_verified_at?: string | null;
   created_at: string;
   items: InvoiceItem[];
   payment_upi_id?: string | null;

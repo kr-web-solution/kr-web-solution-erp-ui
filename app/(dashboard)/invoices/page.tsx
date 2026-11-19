@@ -69,11 +69,16 @@ export default function InvoicesListPage() {
     fetchInvoices();
   }, [user?.role]);
 
-  const handleMarkPaid = async (id: string, e: React.MouseEvent) => {
+  const handleMarkPaid = async (id: string, e: React.MouseEvent, hasProof?: boolean) => {
     e.stopPropagation();
     try {
-      await invoicesApi.markPaid(id);
-      toast.success('Invoice marked as paid');
+      if (hasProof) {
+        await invoicesApi.verifyPayment(id);
+        toast.success('Payment verified — paid receipt emailed');
+      } else {
+        await invoicesApi.markPaid(id);
+        toast.success('Invoice marked as paid');
+      }
       fetchInvoices();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to mark invoice as paid');
@@ -273,16 +278,16 @@ export default function InvoicesListPage() {
       align: 'right' as const,
       render: (row: Invoice) => (
         <div className="flex items-center justify-end gap-1">
-          {row.status !== 'paid' && isFounder && (
+          {row.status !== 'paid' && row.status !== 'cancelled' && row.status !== 'void' && isFounder && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={(e) => handleMarkPaid(row.id, e)}
+              onClick={(e) => handleMarkPaid(row.id, e, Boolean(row.has_payment_proof))}
               className="h-8 px-2 text-xs"
-              title="Mark as Paid"
+              title={row.has_payment_proof ? 'Verified and Paid' : 'Mark as Paid'}
             >
               <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-              <span>Paid</span>
+              <span>{row.has_payment_proof ? 'Verify' : 'Paid'}</span>
             </Button>
           )}
 

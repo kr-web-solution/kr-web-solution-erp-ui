@@ -577,6 +577,36 @@ export const invoicesApi = {
       method: 'POST',
     }),
 
+  uploadPaymentProof: (id: string, file: File, note?: string) => {
+    const body = new FormData();
+    body.append('file', file);
+    if (note?.trim()) body.append('note', note.trim());
+    return apiClient<Invoice>(`/api/v1/invoices/${id}/payment-proof`, {
+      method: 'POST',
+      body,
+    });
+  },
+
+  openPaymentProof: async (id: string) => {
+    const headers = new Headers();
+    const token = getAuthToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const res = await fetch(`${getApiBaseUrl()}/api/v1/invoices/${id}/payment-proof`, {
+      headers,
+      credentials: 'include',
+    });
+    if (!res.ok) throw new ApiError(res.status, 'Failed to open payment proof');
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  },
+
+  verifyPayment: (id: string) =>
+    apiClient<Invoice>(`/api/v1/invoices/${id}/verify-payment`, {
+      method: 'POST',
+    }),
+
   cancel: (id: string) =>
     apiClient<Invoice>(`/api/v1/invoices/${id}/cancel`, {
       method: 'POST',

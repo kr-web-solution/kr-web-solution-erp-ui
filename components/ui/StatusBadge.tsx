@@ -43,6 +43,14 @@ const INVOICE_STATUS: Record<string, BadgeConfig> = {
   sent: { label: 'Sent', bg: 'bg-[#E8F0FE]', text: 'text-[#2563EB]', border: 'border-[#2563EB]/20', dot: 'bg-[#2563EB]' },
   paid: { label: 'Paid', bg: 'bg-[#E8F7EE]', text: 'text-[#16A34A]', border: 'border-[#16A34A]/20', dot: 'bg-[#16A34A]' },
   overdue: { label: 'Overdue', bg: 'bg-[#FDECEC]', text: 'text-[#B91C1C]', border: 'border-[#B91C1C]/20', dot: 'bg-[#B91C1C]' },
+  proof_pending: {
+    label: 'Proof submitted',
+    bg: 'bg-[#FEF6D8]',
+    text: 'text-[#5B4300]',
+    border: 'border-[#FADC59]/30',
+    dot: 'bg-[#FADC59]',
+  },
+
   cancelled: { label: 'Cancelled', bg: 'bg-[#EEF1F5]', text: 'text-[#64748B]', border: 'border-[#E6E8EE]', dot: 'bg-[#94A3B8]' },
   void: { label: 'Void', bg: 'bg-[#EEF1F5]', text: 'text-[#64748B]', border: 'border-[#E6E8EE]', dot: 'bg-[#94A3B8]' },
   credit_note: { label: 'Credit note', bg: 'bg-[#FEF6D8]', text: 'text-[#5B4300]', border: 'border-[#FADC59]/30', dot: 'bg-[#FADC59]' },

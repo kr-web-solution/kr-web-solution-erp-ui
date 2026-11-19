@@ -28,6 +28,9 @@ import {
   Ban,
   Receipt,
   Copy,
+  Upload,
+  Eye,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -50,6 +53,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [proofNote, setProofNote] = useState('');
   const [showDeletePrompt, setShowDeletePrompt] = useState(false);
   const [showCancelPrompt, setShowCancelPrompt] = useState(false);
   const [showCreditPrompt, setShowCreditPrompt] = useState(false);
@@ -115,11 +121,47 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     try {
       const updated = await invoicesApi.markPaid(invoiceId);
       setInvoice(updated);
-      toast.success('Invoice marked as paid! Receipt generated.');
+      toast.success('Invoice marked as paid! Receipt emailed to client.');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update invoice payment.');
     } finally {
       setIsMarkingPaid(false);
+    }
+  };
+
+  const handleVerifyAndPaid = async () => {
+    setIsVerifyingPayment(true);
+    try {
+      const updated = await invoicesApi.verifyPayment(invoiceId);
+      setInvoice(updated);
+      toast.success('Payment verified. Paid receipt emailed to client.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to verify payment.');
+    } finally {
+      setIsVerifyingPayment(false);
+    }
+  };
+
+  const handleUploadProof = async (file: File | null) => {
+    if (!file) return;
+    setIsUploadingProof(true);
+    try {
+      const updated = await invoicesApi.uploadPaymentProof(invoiceId, file, proofNote);
+      setInvoice(updated);
+      setProofNote('');
+      toast.success('Payment proof uploaded. Waiting for verification.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to upload payment proof.');
+    } finally {
+      setIsUploadingProof(false);
+    }
+  };
+
+  const handleOpenProof = async () => {
+    try {
+      await invoicesApi.openPaymentProof(invoiceId);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to open payment proof.');
     }
   };
 
@@ -216,8 +258,16 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const isClient = user?.role === 'client';
   const isPaid = invoice.status === 'paid';
   const isOverdue = invoice.status === 'overdue';
+  const isProofPending = invoice.status === 'proof_pending';
   const isCancelled = invoice.status === 'cancelled' || invoice.status === 'void';
   const isCreditNote = invoice.invoice_type === 'credit_note';
+  const hasProof = Boolean(invoice.has_payment_proof);
+  const canUploadProof =
+    !isPaid &&
+    !isCancelled &&
+    !isCreditNote &&
+    (isClient || isFounder) &&
+    ['sent', 'overdue', 'proof_pending'].includes(invoice.status);
   const showPayPanel =
     !isPaid && !isCancelled && !isCreditNote && (isClient || isFounder);
   const qrSrc = invoice.payment_upi_qr_url || null;
@@ -332,6 +382,34 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
+      {isProofPending && (
+        <div className="p-4 bg-[#FEF6D8] border border-[#FADC59]/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#5B4300] shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 shrink-0" />
+            <div>
+              <strong className="block text-sm font-bold">Payment proof submitted</strong>
+              <span>
+                {isFounder
+                  ? 'Review the proof, then click Verified and Paid to email the paid receipt.'
+                  : 'Thanks — KR Web Solution will verify your payment and send a paid receipt by email.'}
+              </span>
+            </div>
+          </div>
+          {isFounder && hasProof && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleVerifyAndPaid}
+              isLoading={isVerifyingPayment}
+              className="whitespace-nowrap bg-emerald-700 hover:bg-emerald-800"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+              <span>Verified and Paid</span>
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Two Column Layout: Document (7 cols) + Action Cards (5 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* LEFT COLUMN: PAPER INVOICE WITH ROTATED GREEN PAID STAMP */}
@@ -428,6 +506,74 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       </p>
                     )}
                 </div>
+
+                {canUploadProof && (
+                  <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-3 py-3 space-y-2">
+                    <p className="text-[11px] font-semibold text-[#0F172A]">
+                      Upload payment proof
+                    </p>
+                    <p className="text-[10px] text-[#64748B]">
+                      After you pay via UPI/bank, upload the screenshot or PDF. Founder will verify and mark paid.
+                    </p>
+                    <textarea
+                      value={proofNote}
+                      onChange={(e) => setProofNote(e.target.value)}
+                      placeholder="Optional note (UTR / reference)"
+                      rows={2}
+                      className="w-full rounded-lg border border-[#E6E8EE] bg-white px-2.5 py-2 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#0F172A]/10"
+                    />
+                    <label className="block">
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf"
+                        className="hidden"
+                        disabled={isUploadingProof}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] || null;
+                          e.target.value = '';
+                          void handleUploadProof(f);
+                        }}
+                      />
+                      <span className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-[#E6E8EE] bg-white px-3 py-2 text-xs font-semibold text-[#0F172A] hover:bg-[#F6F7F9]">
+                        <Upload className="w-3.5 h-3.5" />
+                        {isUploadingProof
+                          ? 'Uploading…'
+                          : hasProof
+                            ? 'Replace proof'
+                            : 'Choose file'}
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {hasProof && (
+                  <div className="rounded-xl border border-[#E6E8EE] bg-white px-3 py-2.5 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                      Payment proof
+                    </p>
+                    <p className="text-xs font-medium text-[#0F172A] truncate">
+                      {invoice.payment_proof_filename || 'Uploaded file'}
+                    </p>
+                    {invoice.payment_proof_note && (
+                      <p className="text-[11px] text-[#64748B]">{invoice.payment_proof_note}</p>
+                    )}
+                    {invoice.payment_proof_uploaded_at && (
+                      <p className="text-[10px] text-[#94A3B8]">
+                        Uploaded{' '}
+                        {new Date(invoice.payment_proof_uploaded_at).toLocaleString('en-IN')}
+                      </p>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full h-8 text-xs"
+                      onClick={handleOpenProof}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1.5" />
+                      View proof
+                    </Button>
+                  </div>
+                )}
               </div>
             </SectionCard>
           )}
@@ -439,7 +585,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             icon={<FileText className="w-4 h-4" />}
           >
             <div className="space-y-3">
-              {!isPaid && !isCancelled && isFounder && !isCreditNote && (
+              {!isPaid && !isCancelled && isFounder && !isCreditNote && hasProof && (
+                <Button
+                  variant="primary"
+                  onClick={handleVerifyAndPaid}
+                  isLoading={isVerifyingPayment}
+                  className="w-full text-xs shadow-sm bg-emerald-700 hover:bg-emerald-800"
+                >
+                  <ShieldCheck className="w-4 h-4 mr-1.5" />
+                  <span>Verified and Paid</span>
+                </Button>
+              )}
+
+              {!isPaid && !isCancelled && isFounder && !isCreditNote && !hasProof && (
                 <Button
                   variant="primary"
                   onClick={handleMarkPaid}
@@ -447,11 +605,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   className="w-full text-xs shadow-sm bg-emerald-700 hover:bg-emerald-800"
                 >
                   <Check className="w-4 h-4 mr-1.5" />
-                  <span>Mark as Paid (Generate Receipt)</span>
+                  <span>Mark as Paid (no proof)</span>
                 </Button>
               )}
 
-              {isFounder && !isPaid && !isCancelled && !isCreditNote && (
+              {isFounder && !isPaid && !isCancelled && !isCreditNote && !isProofPending && (
                 <Link href={`/invoices/${invoice.id}/edit`} className="block">
                   <Button variant="secondary" className="w-full text-xs">
                     <Pencil className="w-3.5 h-3.5 mr-1.5" />
@@ -460,7 +618,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </Link>
               )}
 
-              {isFounder && !isCancelled && !isCreditNote && ['sent', 'overdue', 'draft'].includes(invoice.status) && (
+              {isFounder && !isCancelled && !isCreditNote && ['sent', 'overdue', 'draft', 'proof_pending'].includes(invoice.status) && (
                 <Button
                   variant="secondary"
                   className="w-full text-xs"
