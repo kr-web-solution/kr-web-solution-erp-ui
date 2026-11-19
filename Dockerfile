@@ -8,7 +8,6 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Build-time: API rewrite host is resolved at runtime via API_INTERNAL_URL in next.config.mjs
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -18,6 +17,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Required at runtime: Dokploy API service DNS name + port 8000 (never localhost).
+# Example: http://kr-web-solution-official-site-krwebsolutionerpapi-XXXX:8000
+ENV API_INTERNAL_URL=
 
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs

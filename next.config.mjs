@@ -29,21 +29,8 @@ const nextConfig = {
       { source: '/settings/company', destination: '/settings', permanent: false },
     ];
   },
-  async rewrites() {
-    // Browser never sees the backend host. Next proxies /api → Docker/internal API.
-    // Dev:  http://127.0.0.1:8000
-    // Prod: Dokploy API container name, e.g. http://…erpapi-l2an21:8000
-    const internalApi = (process.env.API_INTERNAL_URL || 'http://127.0.0.1:8000').replace(
-      /\/$/,
-      ''
-    );
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${internalApi}/api/:path*`,
-      },
-    ];
-  },
+  // /api/* is proxied at runtime by app/api/[...path]/route.ts (reads API_INTERNAL_URL).
+  // Do not use next.config rewrites — those are baked at build time and break Dokploy.
 };
 
 export default nextConfig;
