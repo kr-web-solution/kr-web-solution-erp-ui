@@ -80,6 +80,73 @@ export class ApiError extends Error {
   }
 }
 
+const EXT_MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  txt: 'text/plain',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+
+function mimeFromFilename(name: string): string | null {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  return EXT_MIME[ext] || null;
+}
+
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      /* ignore */
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i.exec(header);
+  return (plain?.[1] || plain?.[2] || '').trim().replace(/^"|"$/g, '') || null;
+}
+
+/** Open API binary responses in a new tab (preview). Falls back to download for unknown types. */
+async function openBinaryResponse(res: Response, fallbackName = 'file') {
+  const disposition = res.headers.get('content-disposition');
+  const filename = filenameFromDisposition(disposition) || fallbackName;
+  let type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!type || type === 'application/octet-stream' || type === 'binary/octet-stream') {
+    type = mimeFromFilename(filename) || 'application/octet-stream';
+  }
+  const buffer = await res.arrayBuffer();
+  const blob = new Blob([buffer], { type });
+  const objectUrl = URL.createObjectURL(blob);
+  const viewable =
+    type.startsWith('image/') || type === 'application/pdf' || type.startsWith('text/');
+
+  if (viewable) {
+    const opened = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  } else {
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
+}
+
 export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -420,10 +487,7 @@ export const projectsApi = {
       credentials: 'include',
     });
     if (!res.ok) throw new ApiError(res.status, 'Failed to open document');
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    window.open(objectUrl, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    await openBinaryResponse(res, 'document');
   },
 
   toggleMaintenance: (id: string) =>
@@ -618,10 +682,7 @@ export const invoicesApi = {
       credentials: 'include',
     });
     if (!res.ok) throw new ApiError(res.status, 'Failed to open payment proof');
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    window.open(objectUrl, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    await openBinaryResponse(res, 'payment-proof.png');
   },
 
   verifyPayment: (id: string) =>
@@ -800,11 +861,7 @@ export const engagementsApi = {
     if (!res.ok) {
       throw new ApiError(res.status, 'Failed to open document');
     }
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    window.open(objectUrl, '_blank', 'noopener,noreferrer');
-    // Revoke after browser has a chance to load
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    await openBinaryResponse(res, 'document');
   },
 
   deleteDocument: (engagementId: string, docId: string) =>
@@ -956,10 +1013,7 @@ async function openStaffBinary(path: string) {
     credentials: 'include',
   });
   if (!res.ok) throw new ApiError(res.status, 'Failed to open file');
-  const blob = await res.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  window.open(objectUrl, '_blank', 'noopener,noreferrer');
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  await openBinaryResponse(res, path.split('/').pop() || 'file');
 }
 
 export const staffApi = {
