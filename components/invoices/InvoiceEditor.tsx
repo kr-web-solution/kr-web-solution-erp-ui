@@ -721,7 +721,9 @@ export function InvoiceEditor({
             taxPaise={taxPaise}
             taxRatePercent={taxRatePercent}
             totalPaise={totalPaise}
-            isPaid={false}
+            status={existingInvoice?.status || 'draft'}
+            invoiceType={existingInvoice?.invoice_type}
+            isPaid={existingInvoice?.status === 'paid'}
             notes={notes}
           />
         </div>

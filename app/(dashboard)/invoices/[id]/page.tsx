@@ -263,13 +263,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const isCreditNote = invoice.invoice_type === 'credit_note';
   const hasProof = Boolean(invoice.has_payment_proof);
   const canUploadProof =
-    !isPaid &&
     !isCancelled &&
     !isCreditNote &&
-    (isClient || isFounder) &&
-    ['sent', 'overdue', 'proof_pending'].includes(invoice.status);
+    (((isClient || isFounder) &&
+      ['sent', 'overdue', 'proof_pending'].includes(invoice.status)) ||
+      (isFounder && isPaid));
   const showPayPanel =
     !isPaid && !isCancelled && !isCreditNote && (isClient || isFounder);
+  const showProofCard = hasProof || canUploadProof;
   const qrSrc = invoice.payment_upi_qr_url || null;
 
   const previewItems: InvoiceLineItem[] = (invoice.items || []).map((it) => ({
@@ -419,11 +420,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             issueDate={invoice.issue_date}
             dueDate={invoice.due_date}
             clientName={invoice.client_name || 'Client Account'}
+            projectName={invoice.project_name || undefined}
+            invoiceType={invoice.invoice_type}
             items={previewItems}
             subtotalPaise={invoice.subtotal_paise || 0}
             taxPaise={invoice.tax_paise || 0}
             taxRatePercent={invoice.tax_rate_percent ?? 0}
             totalPaise={invoice.total_paise || 0}
+            status={invoice.status}
             isPaid={isPaid}
             notes={invoice.notes || undefined}
           />
@@ -506,14 +510,57 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       </p>
                     )}
                 </div>
+              </div>
+            </SectionCard>
+          )}
+
+          {showProofCard && (
+            <SectionCard
+              title="Payment proof"
+              subtitle={
+                isPaid
+                  ? 'UPI / bank transfer screenshot attached to this invoice'
+                  : 'Upload proof after payment — founder verifies then marks paid'
+              }
+              icon={<ShieldCheck className="w-4 h-4" />}
+            >
+              <div className="space-y-3 text-xs">
+                {hasProof && (
+                  <div className="rounded-xl border border-[#E6E8EE] bg-white px-3 py-2.5 space-y-2">
+                    <p className="text-xs font-medium text-[#0F172A] truncate">
+                      {invoice.payment_proof_filename || 'Uploaded file'}
+                    </p>
+                    {invoice.payment_proof_note && (
+                      <p className="text-[11px] text-[#64748B]">{invoice.payment_proof_note}</p>
+                    )}
+                    {invoice.payment_proof_uploaded_at && (
+                      <p className="text-[10px] text-[#94A3B8]">
+                        Uploaded{' '}
+                        {new Date(invoice.payment_proof_uploaded_at).toLocaleString('en-IN')}
+                      </p>
+                    )}
+                    {invoice.payment_verified_at && (
+                      <p className="text-[10px] text-emerald-700 font-semibold">
+                        Verified{' '}
+                        {new Date(invoice.payment_verified_at).toLocaleString('en-IN')}
+                      </p>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full h-8 text-xs"
+                      onClick={handleOpenProof}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1.5" />
+                      View proof
+                    </Button>
+                  </div>
+                )}
 
                 {canUploadProof && (
                   <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-3 py-3 space-y-2">
                     <p className="text-[11px] font-semibold text-[#0F172A]">
-                      Upload payment proof
-                    </p>
-                    <p className="text-[10px] text-[#64748B]">
-                      After you pay via UPI/bank, upload the screenshot or PDF. Founder will verify and mark paid.
+                      {hasProof ? 'Replace payment proof' : 'Upload payment proof'}
                     </p>
                     <textarea
                       value={proofNote}
@@ -536,42 +583,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       />
                       <span className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-[#E6E8EE] bg-white px-3 py-2 text-xs font-semibold text-[#0F172A] hover:bg-[#F6F7F9]">
                         <Upload className="w-3.5 h-3.5" />
-                        {isUploadingProof
-                          ? 'Uploading…'
-                          : hasProof
-                            ? 'Replace proof'
-                            : 'Choose file'}
+                        {isUploadingProof ? 'Uploading…' : 'Choose file'}
                       </span>
                     </label>
-                  </div>
-                )}
-
-                {hasProof && (
-                  <div className="rounded-xl border border-[#E6E8EE] bg-white px-3 py-2.5 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
-                      Payment proof
-                    </p>
-                    <p className="text-xs font-medium text-[#0F172A] truncate">
-                      {invoice.payment_proof_filename || 'Uploaded file'}
-                    </p>
-                    {invoice.payment_proof_note && (
-                      <p className="text-[11px] text-[#64748B]">{invoice.payment_proof_note}</p>
-                    )}
-                    {invoice.payment_proof_uploaded_at && (
-                      <p className="text-[10px] text-[#94A3B8]">
-                        Uploaded{' '}
-                        {new Date(invoice.payment_proof_uploaded_at).toLocaleString('en-IN')}
-                      </p>
-                    )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full h-8 text-xs"
-                      onClick={handleOpenProof}
-                    >
-                      <Eye className="w-3.5 h-3.5 mr-1.5" />
-                      View proof
-                    </Button>
                   </div>
                 )}
               </div>
