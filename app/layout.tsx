@@ -1,21 +1,33 @@
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans, Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import { Providers } from '@/components/shared/Providers';
 import { Toaster } from 'sonner';
 import './globals.css';
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ['latin'],
+// Self-hosted fonts — avoids next/font/google Docker/CI flake when Google
+// returns extensionless /l/font?kit= URLs (Next 15 crash: reading '1' of null).
+const plusJakartaSans = localFont({
+  src: [
+    {
+      path: './fonts/plus-jakarta-sans-latin.woff2',
+      weight: '500 800',
+      style: 'normal',
+    },
+  ],
   variable: '--font-heading',
   display: 'swap',
-  weight: ['500', '600', '700', '800'],
 });
 
-const inter = Inter({
-  subsets: ['latin'],
+const inter = localFont({
+  src: [
+    {
+      path: './fonts/inter-latin.woff2',
+      weight: '400 700',
+      style: 'normal',
+    },
+  ],
   variable: '--font-sans',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
 });
 
 export const metadata: Metadata = {
