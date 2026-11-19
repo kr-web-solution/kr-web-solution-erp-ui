@@ -777,7 +777,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       {activeTab === 'docs' && (
         <div className="space-y-4">
-          <ProjectFilesPanel projectId={projectId} />
+          <ProjectFilesPanel projectId={projectId} role={user?.role} />
           <ProjectFeaturesPanel projectId={projectId} role={user?.role} docsMode />
         </div>
       )}

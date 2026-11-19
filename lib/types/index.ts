@@ -205,6 +205,7 @@ export interface ProjectDocument {
   id: string;
   project_id: string;
   title: string;
+  description?: string | null;
   original_filename: string;
   content_type: string;
   size_bytes: number;

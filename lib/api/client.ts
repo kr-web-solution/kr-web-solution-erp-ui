@@ -378,16 +378,38 @@ export const projectsApi = {
   listDocuments: (id: string) =>
     apiClient<ProjectDocument[]>(`/api/v1/projects/${id}/documents`, { cache: 'no-store' }),
 
-  uploadDocument: (id: string, file: File, title: string, docKind: string) => {
+  uploadDocument: (
+    id: string,
+    file: File,
+    title: string,
+    docKind: string,
+    description?: string
+  ) => {
     const body = new FormData();
     body.append('file', file);
     body.append('title', title);
     body.append('doc_kind', docKind);
+    if (description?.trim()) body.append('description', description.trim());
     return apiClient<ProjectDocument>(`/api/v1/projects/${id}/documents`, {
       method: 'POST',
       body,
     });
   },
+
+  updateDocument: (
+    projectId: string,
+    docId: string,
+    data: { title?: string; description?: string | null; doc_kind?: string }
+  ) =>
+    apiClient<ProjectDocument>(`/api/v1/projects/${projectId}/documents/${docId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteDocument: (projectId: string, docId: string) =>
+    apiClient<{ message: string }>(`/api/v1/projects/${projectId}/documents/${docId}`, {
+      method: 'DELETE',
+    }),
 
   openDocument: async (projectId: string, docId: string) => {
     const headers = new Headers();
