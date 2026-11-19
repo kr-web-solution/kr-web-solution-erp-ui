@@ -4,7 +4,7 @@ import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { invoicesApi, lateFeeApi, API_BASE_URL } from '@/lib/api/client';
+import { invoicesApi, lateFeeApi } from '@/lib/api/client';
 import { Invoice, LateFeeDecisionRequest } from '@/lib/types';
 import { isPrivileged } from '@/lib/roles';
 import {
@@ -37,6 +37,7 @@ import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageSkeleton } from '@/components/ui/Skeleton';
+import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import { toast } from 'sonner';
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -219,11 +220,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const isCreditNote = invoice.invoice_type === 'credit_note';
   const showPayPanel =
     !isPaid && !isCancelled && !isCreditNote && (isClient || isFounder);
-  const qrSrc = invoice.payment_upi_qr_url
-    ? invoice.payment_upi_qr_url.startsWith('http')
-      ? invoice.payment_upi_qr_url
-      : `${API_BASE_URL}${invoice.payment_upi_qr_url}`
-    : null;
+  const qrSrc = invoice.payment_upi_qr_url || null;
 
   const previewItems: InvoiceLineItem[] = (invoice.items || []).map((it) => ({
     id: it.id,
@@ -364,8 +361,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             >
               <div className="space-y-3 text-xs">
                 {qrSrc && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <AuthenticatedImage
                     src={qrSrc}
                     alt="UPI QR"
                     className="mx-auto h-40 w-40 rounded-xl border border-[#E6E8EE] bg-white object-contain p-2"

@@ -37,6 +37,7 @@ import { Modal } from '@/components/ui/Modal';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Tabs } from '@/components/ui/Tabs';
 import { PageSkeleton } from '@/components/ui/Skeleton';
+import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
 import { toast } from 'sonner';
 
 const SUB_NAV = [
@@ -659,12 +660,11 @@ export default function SettingsCompanyPage() {
                           }}
                         />
                         {settings.bank_upi_qr_url && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <AuthenticatedImage
                             src={
                               settings.bank_upi_qr_url.startsWith('http')
                                 ? settings.bank_upi_qr_url
-                                : `${process.env.NEXT_PUBLIC_API_URL || ''}${settings.bank_upi_qr_url}`
+                                : settings.bank_upi_qr_url
                             }
                             alt="UPI QR"
                             className="h-20 w-20 rounded-lg border border-[#E6E8EE] object-contain bg-white"
