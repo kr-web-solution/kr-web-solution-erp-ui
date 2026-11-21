@@ -4,7 +4,13 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { dashboardApi, lateFeeApi, invoicesApi, companyExpensesApi } from '@/lib/api/client';
+import {
+  dashboardApi,
+  lateFeeApi,
+  invoicesApi,
+  companyExpensesApi,
+  type DashboardPeriod,
+} from '@/lib/api/client';
 import { isPrivileged } from '@/lib/roles';
 import { routes } from '@/lib/routes';
 import {
@@ -99,13 +105,13 @@ export default function DashboardPage() {
   });
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<'week' | 'month' | '6m'>('6m');
+  const [period, setPeriod] = useState<DashboardPeriod>('month');
 
-  const fetchSummary = async () => {
+  const fetchSummary = async (selectedPeriod: DashboardPeriod = period) => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await dashboardApi.getSummary();
+      const data = await dashboardApi.getSummary(selectedPeriod);
       setSummary(data);
       if (isPrivileged(user?.role)) {
         try {
@@ -129,8 +135,9 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    fetchSummary();
-  }, [user?.role]);
+    fetchSummary(period);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when role or period changes
+  }, [user?.role, period]);
 
   const formatRupees = (paise: number) => {
     const rupees = (paise || 0) / 100;
@@ -226,8 +233,11 @@ export default function DashboardPage() {
     const spendByKey: Record<string, number> = {};
     for (const exp of expenses) {
       if (!exp.expense_date) continue;
-      const key = exp.expense_date.slice(0, 7); // YYYY-MM
-      spendByKey[key] = (spendByKey[key] || 0) + (exp.amount_paise || 0);
+      const dayKey = exp.expense_date.slice(0, 10); // YYYY-MM-DD
+      const monthKey = exp.expense_date.slice(0, 7); // YYYY-MM
+      const amt = exp.amount_paise || 0;
+      spendByKey[dayKey] = (spendByKey[dayKey] || 0) + amt;
+      spendByKey[monthKey] = (spendByKey[monthKey] || 0) + amt;
     }
     return points.map((p) => ({
       month: p.month,
@@ -244,12 +254,31 @@ export default function DashboardPage() {
     (p) => (p.billed || 0) > 0 || (p.collected || 0) > 0 || (p.spend || 0) > 0
   );
 
-  const money6mo = useMemo(() => {
-    const billed = moneyChartData.reduce((s, p) => s + (p.billed || 0), 0);
-    const collected = moneyChartData.reduce((s, p) => s + (p.collected || 0), 0);
+  const moneyPeriod = useMemo(() => {
+    const billedFromApi = Math.round((summary?.billed_paise || 0) / 100);
+    const collectedFromApi = Math.round((summary?.collected_paise || 0) / 100);
+    const billedChart = moneyChartData.reduce((s, p) => s + (p.billed || 0), 0);
+    const collectedChart = moneyChartData.reduce((s, p) => s + (p.collected || 0), 0);
     const spend = moneyChartData.reduce((s, p) => s + (p.spend || 0), 0);
-    const rate = billed > 0 ? Math.round((collected / billed) * 100) : 0;
+    // Prefer API period totals (payment-date based collected)
+    const billed = summary?.billed_paise != null ? billedFromApi : billedChart;
+    const collected = summary?.collected_paise != null ? collectedFromApi : collectedChart;
+    const rate = billed > 0 ? Math.round((collected / billed) * 100) : collected > 0 ? 100 : 0;
     return { billed, collected, spend, rate };
+  }, [moneyChartData, summary?.billed_paise, summary?.collected_paise]);
+
+  // Running total of collections — cumulative inflow curve for the Collected card
+  const collectedInflowData = useMemo(() => {
+    let running = 0;
+    return moneyChartData.map((p) => {
+      running += p.collected || 0;
+      return {
+        month: p.month,
+        year_month: p.year_month,
+        collected: p.collected || 0,
+        inflow: running,
+      };
+    });
   }, [moneyChartData]);
 
   const chartTooltip = {
@@ -331,29 +360,40 @@ export default function DashboardPage() {
   }, [summary?.open_leads_count]);
 
   const periodLabel =
-    period === 'week' ? 'This week' : period === 'month' ? 'This month' : 'Last 6 months';
+    summary?.period_label ||
+    (period === 'week'
+      ? 'This week'
+      : period === 'month'
+        ? 'This month'
+        : period === '6m'
+          ? 'Last 6 months'
+          : period === '1y'
+            ? 'Last 1 year'
+            : 'All time');
 
   return (
-    <div className="w-full min-w-0 space-y-5 pb-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="@container/dashboard w-full min-w-0 space-y-5 pb-4">
+      <div className="flex flex-col gap-3 @[640px]/dashboard:flex-row @[640px]/dashboard:items-end @[640px]/dashboard:justify-between">
         <div className="min-w-0">
-          <h1 className="font-heading text-[28px] font-bold tracking-[-0.02em] text-text">
+          <h1 className="font-heading text-[22px] font-bold tracking-[-0.02em] text-text sm:text-[28px]">
             {pageTitle}
           </h1>
           <p className="mt-1 text-sm text-muted">{pageDescription}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @[640px]/dashboard:w-auto">
           {isPrivileged(role) && (
-            <div className="relative">
+            <div className="relative min-w-0 flex-1 @[400px]/dashboard:flex-none">
               <select
                 value={period}
-                onChange={(e) => setPeriod(e.target.value as 'week' | 'month' | '6m')}
-                className="h-10 appearance-none rounded-xl border border-border bg-surface pl-3.5 pr-9 text-sm font-semibold text-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] focus:outline-none focus:ring-2 focus:ring-brand-red-500"
+                onChange={(e) => setPeriod(e.target.value as DashboardPeriod)}
+                className="h-10 w-full appearance-none rounded-xl border border-border bg-surface pl-3.5 pr-9 text-sm font-semibold text-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] focus:outline-none focus:ring-2 focus:ring-brand-red-500 @[400px]/dashboard:w-auto"
                 aria-label="Period"
               >
                 <option value="week">This week</option>
                 <option value="month">This month</option>
                 <option value="6m">Last 6 months</option>
+                <option value="1y">Last 1 year</option>
+                <option value="full">All time</option>
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             </div>
@@ -361,9 +401,10 @@ export default function DashboardPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={fetchSummary}
+            onClick={() => fetchSummary(period)}
             isLoading={isLoading}
             icon={<RefreshCw className="h-3.5 w-3.5" />}
+            className="shrink-0"
           >
             Refresh
           </Button>
@@ -376,7 +417,7 @@ export default function DashboardPage() {
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span className="font-medium">{error}</span>
           </div>
-          <Button variant="danger" size="sm" onClick={fetchSummary}>
+          <Button variant="danger" size="sm" onClick={() => fetchSummary(period)}>
             Retry
           </Button>
         </div>
@@ -466,11 +507,12 @@ export default function DashboardPage() {
       {/* ─── FOUNDER / ADMIN — SilverLogix layout ─── */}
       {isPrivileged(role) && (
         <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Container-query grid: 1 → 2 → 4 based on content width (sidebar-safe) */}
+          <div className="grid grid-cols-1 gap-3 @[520px]/dashboard:grid-cols-2 @[1100px]/dashboard:grid-cols-4">
             <KpiCard
               label="Running projects"
               value={summary?.running_projects_count ?? 0}
-              caption={periodLabel}
+              caption="Active now"
               variant="green"
               icon={<FolderKanban className="h-5 w-5" />}
               href={routes.projects}
@@ -481,7 +523,7 @@ export default function DashboardPage() {
             <KpiCard
               label="Open leads"
               value={summary?.open_leads_count ?? 0}
-              caption={periodLabel}
+              caption="In pipeline"
               variant="blue"
               icon={<TrendingUp className="h-5 w-5" />}
               href={routes.leads}
@@ -509,29 +551,32 @@ export default function DashboardPage() {
             />
             <KpiCard
               label="Collected"
-              value={`₹${money6mo.collected.toLocaleString('en-IN')}`}
-              caption={`${money6mo.rate}% of billed`}
+              value={`₹${moneyPeriod.collected.toLocaleString('en-IN')}`}
+              caption={`Received · ${periodLabel}`}
               variant="brand"
               icon={<IndianRupee className="h-5 w-5" />}
               href={routes.invoices}
               isLoading={isLoading}
               sparkline={collectedSpark.length ? collectedSpark : [2, 3, 2, 4, 5, 6]}
               trend={{
-                label: `₹${money6mo.billed.toLocaleString('en-IN')} billed`,
-                positive: money6mo.rate >= 50,
+                label:
+                  moneyPeriod.collected === 0 && moneyPeriod.billed === 0
+                    ? `No money in ${periodLabel}`
+                    : `₹${moneyPeriod.billed.toLocaleString('en-IN')} billed · ${moneyPeriod.rate}%`,
+                positive: moneyPeriod.collected > 0,
               }}
             />
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex flex-wrap gap-2">
             {founderQuickLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-brand-red-500/40 hover:bg-brand-red-tint hover:text-brand-red-500"
+                className="inline-flex min-w-0 items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm font-semibold text-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-brand-red-500/40 hover:bg-brand-red-tint hover:text-brand-red-500 sm:px-3.5"
               >
-                <span className="text-brand-red-500">{link.icon}</span>
-                {link.label}
+                <span className="shrink-0 text-brand-red-500">{link.icon}</span>
+                <span className="truncate">{link.label}</span>
               </Link>
             ))}
           </div>
@@ -546,9 +591,9 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={fetchSummary}>
+                <Button variant="secondary" size="sm" onClick={() => fetchSummary(period)}>
                   <Filter className="mr-1.5 h-3.5 w-3.5" />
-                  Filter
+                  Refresh
                 </Button>
                 <Link href={routes.invoices}>
                   <Button variant="primary" size="sm">
@@ -730,10 +775,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Three money charts — billed (area) · collected (bars) · spend (line) */}
-          <div>
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-              <div>
+          {/* Three money charts — billed (area) · collected (cumulative inflow) · spend (line) */}
+          <div className="min-w-0">
+            <div className="mb-3 flex flex-col gap-2 @[560px]/dashboard:flex-row @[560px]/dashboard:flex-wrap @[560px]/dashboard:items-end @[560px]/dashboard:justify-between">
+              <div className="min-w-0">
                 <h2 className="font-heading text-[15px] font-bold text-text">Money overview</h2>
                 <p className="mt-0.5 text-xs text-muted">
                   {periodLabel} · billed · collected · company spend
@@ -753,23 +798,23 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 @[720px]/dashboard:grid-cols-2 @[1100px]/dashboard:grid-cols-3">
               {/* Billed — Area */}
-              <div className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+              <div className="min-w-0 rounded-2xl border border-border bg-surface p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:p-4">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Billed
                     </p>
-                    <p className="mt-1 font-mono text-[22px] font-bold tabular-nums text-text">
-                      ₹{money6mo.billed.toLocaleString('en-IN')}
+                    <p className="mt-1 break-words font-mono text-[20px] font-bold tabular-nums text-text sm:text-[22px]">
+                      ₹{moneyPeriod.billed.toLocaleString('en-IN')}
                     </p>
                   </div>
-                  <span className="rounded-lg bg-brand-yellow-tint px-2 py-1 text-[10px] font-bold uppercase text-brand-text-on-yellow">
+                  <span className="shrink-0 rounded-lg bg-brand-yellow-tint px-2 py-1 text-[10px] font-bold uppercase text-brand-text-on-yellow">
                     Area
                   </span>
                 </div>
-                <div className="mt-2 h-[180px] w-full">
+                <div className="mt-2 h-[160px] w-full min-w-0 sm:h-[180px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={moneyChartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
                       <defs>
@@ -779,8 +824,16 @@ export default function DashboardPage() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid stroke="#E6E8EE" vertical={false} />
-                      <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAxis} />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#94A3B8"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                        minTickGap={16}
+                      />
+                      <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={formatAxis} width={40} />
                       <Tooltip
                         {...chartTooltip}
                         formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Billed']}
@@ -797,58 +850,94 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Collected — Bars */}
-              <div className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+              {/* Collected — cumulative inflow (step area) */}
+              <div className="min-w-0 rounded-2xl border border-border bg-surface p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:p-4">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Collected
                     </p>
-                    <p className="mt-1 font-mono text-[22px] font-bold tabular-nums text-text">
-                      ₹{money6mo.collected.toLocaleString('en-IN')}
+                    <p className="mt-1 break-words font-mono text-[20px] font-bold tabular-nums text-text sm:text-[22px]">
+                      ₹{moneyPeriod.collected.toLocaleString('en-IN')}
                     </p>
                   </div>
-                  <span className="rounded-lg bg-brand-red-tint px-2 py-1 text-[10px] font-bold uppercase text-brand-red-500">
-                    Bars
+                  <span className="shrink-0 rounded-lg bg-brand-red-tint px-2 py-1 text-[10px] font-bold uppercase text-brand-red-500">
+                    Inflow
                   </span>
                 </div>
-                <div className="mt-2 h-[180px] w-full">
+                <div className="mt-2 h-[160px] w-full min-w-0 sm:h-[180px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={moneyChartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                    <AreaChart
+                      data={collectedInflowData}
+                      margin={{ top: 8, right: 4, left: -18, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="collectedInflowFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#E32B2B" stopOpacity={0.4} />
+                          <stop offset="55%" stopColor="#E32B2B" stopOpacity={0.12} />
+                          <stop offset="100%" stopColor="#E32B2B" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid stroke="#E6E8EE" vertical={false} />
-                      <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAxis} />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#94A3B8"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                        minTickGap={16}
+                      />
+                      <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={formatAxis} width={40} />
                       <Tooltip
                         {...chartTooltip}
-                        formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Collected']}
+                        formatter={(value: any, name: any) => [
+                          `₹${Number(value).toLocaleString('en-IN')}`,
+                          name === 'inflow' ? 'Running total' : 'This period',
+                        ]}
                       />
-                      <Bar dataKey="collected" fill="#E32B2B" radius={[6, 6, 0, 0]} maxBarSize={28} />
-                    </BarChart>
+                      <Area
+                        type="stepAfter"
+                        dataKey="inflow"
+                        stroke="#E32B2B"
+                        strokeWidth={2.5}
+                        fill="url(#collectedInflowFill)"
+                        activeDot={{ r: 5, fill: '#E32B2B', stroke: '#fff', strokeWidth: 2 }}
+                      />
+                    </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
               {/* Spend — Line */}
-              <div className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+              <div className="min-w-0 rounded-2xl border border-border bg-surface p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:p-4 @[720px]/dashboard:col-span-2 @[1100px]/dashboard:col-span-1">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Spend
                     </p>
-                    <p className="mt-1 font-mono text-[22px] font-bold tabular-nums text-text">
-                      ₹{money6mo.spend.toLocaleString('en-IN')}
+                    <p className="mt-1 break-words font-mono text-[20px] font-bold tabular-nums text-text sm:text-[22px]">
+                      ₹{moneyPeriod.spend.toLocaleString('en-IN')}
                     </p>
                   </div>
-                  <span className="rounded-lg bg-info-tint px-2 py-1 text-[10px] font-bold uppercase text-info">
+                  <span className="shrink-0 rounded-lg bg-info-tint px-2 py-1 text-[10px] font-bold uppercase text-info">
                     Line
                   </span>
                 </div>
-                <div className="mt-2 h-[180px] w-full">
+                <div className="mt-2 h-[160px] w-full min-w-0 sm:h-[180px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={moneyChartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
                       <CartesianGrid stroke="#E6E8EE" vertical={false} />
-                      <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAxis} />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#94A3B8"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                        minTickGap={16}
+                      />
+                      <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={formatAxis} width={40} />
                       <Tooltip
                         {...chartTooltip}
                         formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Spend']}
@@ -880,7 +969,7 @@ export default function DashboardPage() {
       {/* ─── WORKER ─── */}
       {role === 'worker' && (
         <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 @[520px]/dashboard:grid-cols-2 @[900px]/dashboard:grid-cols-3">
             <KpiCard
               label="Assigned projects"
               value={summary?.running_projects_count ?? 0}
@@ -910,7 +999,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 @[400px]/dashboard:grid-cols-2 @[640px]/dashboard:grid-cols-3">
             {[
               { label: 'My workday', href: routes.staffMe, icon: <Briefcase className="h-4 w-4" /> },
               { label: 'Projects', href: routes.projects, icon: <FolderKanban className="h-4 w-4" /> },
@@ -919,12 +1008,12 @@ export default function DashboardPage() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="flex items-center gap-2.5 rounded-xl border border-border bg-surface p-3 transition-colors hover:border-brand-red-500/35 hover:bg-brand-red-tint/40"
+                className="flex min-w-0 items-center gap-2.5 rounded-xl border border-border bg-surface p-3 transition-colors hover:border-brand-red-500/35 hover:bg-brand-red-tint/40"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg text-brand-red-500">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg text-brand-red-500">
                   {link.icon}
                 </span>
-                <span className="text-sm font-semibold text-text">{link.label}</span>
+                <span className="truncate text-sm font-semibold text-text">{link.label}</span>
               </Link>
             ))}
           </div>
@@ -970,7 +1059,7 @@ export default function DashboardPage() {
       {/* ─── CLIENT ─── */}
       {role === 'client' && (
         <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 @[520px]/dashboard:grid-cols-2 @[900px]/dashboard:grid-cols-3">
             <KpiCard
               label="Active projects"
               value={summary?.running_projects_count ?? 0}
@@ -1003,7 +1092,7 @@ export default function DashboardPage() {
           {hasRevenueData && (
             <SectionCard
               title="Your billing"
-              subtitle="Last 6 months · billed vs paid"
+              subtitle={`${periodLabel} · billed vs paid`}
               icon={<IndianRupee className="h-4 w-4" />}
               className="min-h-[280px]"
               bodyClassName="min-h-[220px]"

@@ -158,6 +158,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     EngagementListItem | EngagementDetail | null
   >(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [deliveryMounted, setDeliveryMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isTogglingMaintenance, setIsTogglingMaintenance] = useState(false);
@@ -892,17 +893,22 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             : []),
         ]}
         activeTab={activeTab}
-        onChange={setActiveTab}
+        onChange={(id) => {
+          if (id === 'delivery') setDeliveryMounted(true);
+          setActiveTab(id);
+        }}
       />
 
-      {activeTab === 'delivery' && (
-        <ProjectDeliveryPanel
-          projectId={projectId}
-          role={user?.role}
-          onPhaseChange={(phase) =>
-            setProject((p) => (p ? { ...p, delivery_phase: phase } : p))
-          }
-        />
+      {deliveryMounted && (
+        <div className={activeTab === 'delivery' ? undefined : 'hidden'} aria-hidden={activeTab !== 'delivery'}>
+          <ProjectDeliveryPanel
+            projectId={projectId}
+            role={user?.role}
+            onPhaseChange={(phase) =>
+              setProject((p) => (p ? { ...p, delivery_phase: phase } : p))
+            }
+          />
+        </div>
       )}
 
       {activeTab === 'features' && (

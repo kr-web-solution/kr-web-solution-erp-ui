@@ -41,10 +41,9 @@ export function Sparkline({
 
   return (
     <svg
-      width={width}
-      height={height}
       viewBox={`0 0 ${width} ${height}`}
-      className={cn('shrink-0 overflow-visible', className)}
+      preserveAspectRatio="none"
+      className={cn('block h-[28px] w-full max-w-[160px] overflow-visible', className)}
       aria-hidden
     >
       <path d={area} fill={fill} />

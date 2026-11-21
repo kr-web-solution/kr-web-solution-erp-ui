@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   ChevronRight,
@@ -41,6 +41,17 @@ function pad2(n: number) {
   return String(n).padStart(2, '0');
 }
 
+function withPhaseProgress(data: ProjectDeliveryDetail): ProjectDeliveryDetail {
+  const phase = data.delivery_phase || DELIVERY_MIN_STAGE;
+  const phaseItems = (data.checklist_items || []).filter((i) => i.stage_number === phase);
+  return {
+    ...data,
+    checklist_progress_percent: phaseItems.length
+      ? Math.round((phaseItems.filter((i) => i.is_done).length / phaseItems.length) * 100)
+      : 0,
+  };
+}
+
 export function ProjectDeliveryPanel({ projectId, role, onPhaseChange }: Props) {
   const [delivery, setDelivery] = useState<ProjectDeliveryDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +60,8 @@ export function ProjectDeliveryPanel({ projectId, role, onPhaseChange }: Props) 
   const [noteDraft, setNoteDraft] = useState('');
   const [noteDirty, setNoteDirty] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const toggleQueue = useRef(Promise.resolve());
+  const deliveryRef = useRef<ProjectDeliveryDetail | null>(null);
   const mode = role === 'client' ? 'client' : role === 'worker' ? 'worker' : 'founder';
   const canEdit = role !== 'client';
   const isFounder = isPrivileged(role);
@@ -63,6 +76,7 @@ export function ProjectDeliveryPanel({ projectId, role, onPhaseChange }: Props) 
     setLoading(true);
     try {
       const data = await projectsApi.getDelivery(projectId);
+      deliveryRef.current = data;
       setDelivery(data);
       const phase = data.delivery_phase || DELIVERY_MIN_STAGE;
       onPhaseChange?.(phase);
@@ -83,21 +97,86 @@ export function ProjectDeliveryPanel({ projectId, role, onPhaseChange }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  const applyDelivery = (data: ProjectDeliveryDetail, focusPhase = true) => {
+    deliveryRef.current = data;
+    setDelivery(data);
+    const nextPhase = data.delivery_phase || DELIVERY_MIN_STAGE;
+    onPhaseChange?.(nextPhase);
+    if (focusPhase) {
+      setViewStage(nextPhase);
+      syncNoteDraft(data, nextPhase);
+    }
+  };
+
+  const flushToggles = () => toggleQueue.current;
+
   const run = async (fn: () => Promise<ProjectDeliveryDetail>, ok: string) => {
     setBusy(true);
     try {
+      // Wait for in-flight checklist saves so advance sees the real DB state.
+      await flushToggles();
       const data = await fn();
-      setDelivery(data);
-      const phase = data.delivery_phase || DELIVERY_MIN_STAGE;
-      onPhaseChange?.(phase);
-      setViewStage(phase);
-      syncNoteDraft(data, phase);
+      applyDelivery(data, true);
       toast.success(ok);
     } catch (err: any) {
       toast.error(err?.message || 'Action failed');
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleItem = (itemId: string) => {
+    if (!deliveryRef.current || busy) return;
+    const snapshot = deliveryRef.current;
+    const current = snapshot.checklist_items?.find((i) => i.id === itemId);
+    if (!current) return;
+
+    const optimistic = withPhaseProgress({
+      ...snapshot,
+      checklist_items: (snapshot.checklist_items || []).map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              is_done: !item.is_done,
+              done_at: !item.is_done ? new Date().toISOString() : null,
+            }
+          : item
+      ),
+    });
+    deliveryRef.current = optimistic;
+    setDelivery(optimistic);
+
+    // Serialize API toggles — parallel requests were racing and undoing each other.
+    toggleQueue.current = toggleQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const data = await projectsApi.toggleChecklist(projectId, itemId);
+          // Keep any newer optimistic ticks that are still queued behind this one.
+          const local = deliveryRef.current;
+          const merged = withPhaseProgress({
+            ...data,
+            checklist_items: (data.checklist_items || []).map((serverItem) => {
+              const localItem = local?.checklist_items?.find((i) => i.id === serverItem.id);
+              if (localItem && localItem.id !== itemId && localItem.is_done !== serverItem.is_done) {
+                return localItem;
+              }
+              return serverItem;
+            }),
+          });
+          deliveryRef.current = merged;
+          setDelivery(merged);
+        } catch (err: any) {
+          toast.error(err?.message || 'Checklist update failed');
+          try {
+            const fresh = await projectsApi.getDelivery(projectId);
+            applyDelivery(fresh, false);
+          } catch {
+            deliveryRef.current = snapshot;
+            setDelivery(snapshot);
+          }
+        }
+      });
   };
 
   const selectStage = (stage: number) => {
@@ -347,13 +426,7 @@ export function ProjectDeliveryPanel({ projectId, role, onPhaseChange }: Props) 
                     stage={activeView}
                     disabled={!canEdit || busy || activeView !== phase}
                     onToggle={
-                      activeView === phase
-                        ? (itemId) =>
-                            run(
-                              () => projectsApi.toggleChecklist(projectId, itemId),
-                              'Checklist updated'
-                            )
-                        : undefined
+                      activeView === phase ? (itemId) => void toggleItem(itemId) : undefined
                     }
                   />
 

@@ -367,9 +367,13 @@ export const authApi = {
     }>('/api/v1/auth/oauth-providers', { method: 'GET', cache: 'no-store' }),
 };
 
+export type DashboardPeriod = 'week' | 'month' | '6m' | '1y' | 'full';
+
 export const dashboardApi = {
-  getSummary: () =>
-    apiClient<DashboardSummary>('/api/v1/dashboard', { cache: 'no-store' }),
+  getSummary: (period: DashboardPeriod = 'month') =>
+    apiClient<DashboardSummary>(`/api/v1/dashboard?period=${encodeURIComponent(period)}`, {
+      cache: 'no-store',
+    }),
 };
 
 export const clientsApi = {

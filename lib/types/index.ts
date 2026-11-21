@@ -627,6 +627,10 @@ export interface DashboardSummary {
   recent_items: RecentActivityItem[];
   needs_action_invoices?: LateFeeAction[];
   revenue_by_month?: RevenueMonthPoint[];
+  period?: string;
+  period_label?: string;
+  billed_paise?: number;
+  collected_paise?: number;
 }
 
 export type EngagementKind = 'project' | 'amc_only';
