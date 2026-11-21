@@ -4,24 +4,24 @@ import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { invoicesApi, lateFeeApi } from '@/lib/api/client';
+import {
+  invoicesApi,
+  lateFeeApi,
+  type InvoicePaperOrientation,
+  type InvoicePaperSize,
+} from '@/lib/api/client';
 import { Invoice, LateFeeDecisionRequest } from '@/lib/types';
 import { isPrivileged } from '@/lib/roles';
 import {
   ArrowLeft,
-  Download,
   Mail,
-  CheckCircle,
-  AlertCircle,
   Trash2,
   FileText,
   Clock,
-  Printer,
   Check,
   Send,
   Pencil,
   AlertTriangle,
-  RotateCw,
   Building2,
   Calendar,
   Sparkles,
@@ -31,16 +31,25 @@ import {
   Upload,
   Eye,
   ShieldCheck,
+  Loader2,
 } from 'lucide-react';
+import { DownloadIcon } from '@/components/icons/download';
+import { PrinterCheckIcon } from '@/components/icons/printer-check';
 import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PaperInvoice, InvoiceLineItem } from '@/components/ui/PaperInvoice';
+import { InvoicePaperStage } from '@/components/ui/InvoicePaperStage';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PageSkeleton } from '@/components/ui/Skeleton';
+import { InvoiceDetailSkeleton } from '@/components/ui/Skeleton';
 import { AuthenticatedImage } from '@/components/ui/AuthenticatedImage';
+import {
+  canSoftEditInvoice,
+  invoiceTypeLabel,
+  isInvoiceDocumentLocked,
+} from '@/lib/invoices/labels';
 import { toast } from 'sonner';
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -59,6 +68,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [showDeletePrompt, setShowDeletePrompt] = useState(false);
   const [showCancelPrompt, setShowCancelPrompt] = useState(false);
   const [showCreditPrompt, setShowCreditPrompt] = useState(false);
+  const [showDebitPrompt, setShowDebitPrompt] = useState(false);
+  const [isDebiting, setIsDebiting] = useState(false);
+  const [debitAmountRupees, setDebitAmountRupees] = useState('');
+  const [debitReason, setDebitReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
   const [isCrediting, setIsCrediting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +98,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     reminder_every_hours: 24,
   });
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+  const [paperSize, setPaperSize] = useState<InvoicePaperSize>('a4');
+  const [paperOrientation, setPaperOrientation] =
+    useState<InvoicePaperOrientation>('portrait');
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isViewingPdf, setIsViewingPdf] = useState(false);
 
   const fetchInvoice = async () => {
     setIsLoading(true);
@@ -165,7 +183,47 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!invoice) return;
+    setIsDownloadingPdf(true);
+    try {
+      const safeName = `${invoice.invoice_number || 'invoice'}`.replace(
+        /[^\w.\-]+/g,
+        '-'
+      );
+      await invoicesApi.downloadPdf(invoice.id, {
+        paperSize,
+        orientation: paperOrientation,
+        filename: `${safeName}.pdf`,
+      });
+      toast.success(`Downloaded ${safeName}.pdf`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to download PDF.');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  const handleViewPdf = async () => {
+    if (!invoice) return;
+    setIsViewingPdf(true);
+    try {
+      await invoicesApi.viewPdf(invoice.id, paperSize, paperOrientation);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to open PDF.');
+    } finally {
+      setIsViewingPdf(false);
+    }
+  };
+
   const handleDelete = async () => {
+    if (invoice?.can_delete !== true) {
+      toast.error(
+        'You can only delete the latest invoice in this number series. Cancel this invoice instead (number + details stay frozen), then create a new invoice with the same details.'
+      );
+      setShowDeletePrompt(false);
+      return;
+    }
     try {
       await invoicesApi.delete(invoiceId);
       toast.success('Invoice deleted');
@@ -203,6 +261,30 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  const handleDebitNote = async () => {
+    const rupees = parseFloat(debitAmountRupees);
+    if (!(rupees > 0)) {
+      toast.error('Enter a debit amount greater than zero');
+      return;
+    }
+    setIsDebiting(true);
+    try {
+      const dn = await invoicesApi.debitNote(invoiceId, {
+        amount_paise: Math.round(rupees * 100),
+        reason: debitReason.trim() || undefined,
+      });
+      setShowDebitPrompt(false);
+      setDebitAmountRupees('');
+      setDebitReason('');
+      toast.success(`Debit note ${dn.invoice_number} created`);
+      router.push(`/invoices/${dn.id}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create debit note.');
+    } finally {
+      setIsDebiting(false);
+    }
+  };
+
   const handleLateFeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmittingDecision(true);
@@ -235,7 +317,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   };
 
   if (isLoading) {
-    return <PageSkeleton variant="detail" />;
+    return <InvoiceDetailSkeleton />;
   }
 
   if (error || !invoice) {
@@ -261,6 +343,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const isProofPending = invoice.status === 'proof_pending';
   const isCancelled = invoice.status === 'cancelled' || invoice.status === 'void';
   const isCreditNote = invoice.invoice_type === 'credit_note';
+  const isDebitNote = invoice.invoice_type === 'debit_note';
+  const isAdjustmentNote = isCreditNote || isDebitNote;
+  const documentLocked = isInvoiceDocumentLocked(invoice);
+  const canSoftEdit = isFounder && canSoftEditInvoice(invoice);
+  const typeChip = invoiceTypeLabel(invoice.invoice_type);
   const hasProof = Boolean(invoice.has_payment_proof);
   const canUploadProof =
     !isCancelled &&
@@ -272,6 +359,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     !isPaid && !isCancelled && !isCreditNote && (isClient || isFounder);
   const showProofCard = hasProof || canUploadProof;
   const qrSrc = invoice.payment_upi_qr_url || null;
+  const wireLines =
+    invoice.payment_wire_lines?.length
+      ? invoice.payment_wire_lines
+      : (invoice.payment_bank_wire_instructions || '')
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean);
+  const cgst = invoice.cgst_paise || 0;
+  const sgst = invoice.sgst_paise || 0;
+  const igst = invoice.igst_paise || 0;
+  const hasSplitGst = cgst > 0 || sgst > 0 || igst > 0;
 
   const previewItems: InvoiceLineItem[] = (invoice.items || []).map((it) => ({
     id: it.id,
@@ -279,34 +377,63 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     quantity: it.quantity,
     unit_price_paise: it.unit_rate_paise,
     amount_paise: it.amount_paise || (it.unit_rate_paise * it.quantity),
+    hsn_sac: it.hsn_sac || undefined,
+    unit: it.unit || undefined,
+    line_kind: it.line_kind || undefined,
   }));
 
   return (
-    <div className="w-full min-w-0 space-y-6 pb-12">
-      {/* Header & Breadcrumb */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-[#64748B] mb-1">
+    <div className="flex w-full min-w-0 flex-col gap-3 sm:gap-4 xl:h-[calc(100dvh-7rem)] xl:min-h-0 xl:overflow-hidden">
+      {/* Header */}
+      <div className="flex shrink-0 flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-1.5 flex items-center gap-2 text-xs text-[#64748B]">
             <Link href="/invoices" className="hover:text-[#0F172A] transition-colors">
               Invoices
             </Link>
             <span>/</span>
-            <span className="text-[#0F172A] font-semibold">{invoice.invoice_number}</span>
+            <span className="truncate font-semibold text-[#0F172A]">{invoice.invoice_number}</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-[28px] font-bold text-[#0F172A] tracking-[-0.02em] font-heading">
-              Invoice {invoice.invoice_number}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <h1 className="font-heading text-xl font-bold tracking-[-0.02em] text-[#0F172A] sm:text-2xl lg:text-[28px]">
+              {invoice.invoice_number}
             </h1>
             <StatusBadge status={invoice.status} type="invoice" />
-            {invoice.invoice_type === 'late_fee' && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-[#FDECEC] text-[#B91C1C] border border-rose-200">
-                Late Fee Invoice
+            {typeChip && (
+              <span
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${
+                  invoice.invoice_type === 'late_fee'
+                    ? 'border-rose-200 bg-[#FDECEC] text-[#B91C1C]'
+                    : isCreditNote
+                      ? 'border-[#E6E8EE] bg-[#F6F7F9] text-[#475569]'
+                      : 'border-[#E6E8EE] bg-[#F8FAFC] text-[#334155]'
+                }`}
+              >
+                {typeChip}
+              </span>
+            )}
+            {documentLocked && (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                Content locked
+              </span>
+            )}
+            {documentLocked && invoice.snapshot_frozen_at && (
+              <span
+                className="rounded-full border border-[#E6E8EE] bg-[#F8FAFC] px-2.5 py-0.5 text-[11px] font-medium text-[#64748B]"
+                title={new Date(invoice.snapshot_frozen_at).toLocaleString('en-IN')}
+              >
+                Snapshot{' '}
+                {new Date(invoice.snapshot_frozen_at).toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                })}
               </span>
             )}
           </div>
-          <p className="text-xs text-[#64748B] mt-1 flex items-center gap-1.5">
-            <span>Client:</span>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-[#64748B]">
+            <span>Client</span>
             <Link
               href={`/clients/${invoice.client_id}`}
               className="font-semibold text-[#0F172A] hover:text-[#E32B2B] hover:underline"
@@ -315,44 +442,41 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </Link>
             {invoice.project_name && (
               <>
-                <span>• Project:</span>
-                <span className="text-[#0F172A]">{invoice.project_name}</span>
+                <span className="text-[#CBD5E1]">·</span>
+                <span>Project</span>
+                <span className="font-medium text-[#0F172A]">{invoice.project_name}</span>
               </>
             )}
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <a
-            href={invoicesApi.downloadPdfUrl(invoice.id)}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button variant="secondary" size="sm" className="h-9">
-              <Download className="w-3.5 h-3.5 mr-1.5" />
-              <span>Download PDF</span>
-            </Button>
-          </a>
-
-          {isFounder && invoice.status !== 'paid' && (
-            <Link href={`/invoices/${invoice.id}/edit`}>
-              <Button variant="secondary" size="sm" className="h-9">
-                <Pencil className="w-3.5 h-3.5 mr-1.5" />
-                <span>Edit</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {canSoftEdit && (
+            <Link href={`/invoices/${invoice.id}/edit`} className="min-w-0">
+              <Button variant="secondary" size="sm" className="h-9 max-w-full">
+                <Pencil className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {documentLocked ? (
+                    <>
+                      <span className="sm:hidden">Adjust</span>
+                      <span className="hidden sm:inline">Adjust notes / due date</span>
+                    </>
+                  ) : (
+                    'Edit'
+                  )}
+                </span>
               </Button>
             </Link>
           )}
-
-          {isFounder && (
+          {isFounder && invoice.can_delete === true && (
             <Button
               variant="danger"
               size="sm"
               onClick={() => setShowDeletePrompt(true)}
-              className="h-9 px-3"
+              className="h-9 shrink-0 px-3"
               title="Delete invoice"
-              disabled={invoice.status === 'paid'}
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>
@@ -360,7 +484,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
       {/* OVERDUE RISK BANNER */}
       {isOverdue && (
-        <div className="p-4 bg-[#FDECEC] border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#B91C1C] shadow-sm">
+        <div className="shrink-0 p-4 bg-[#FDECEC] border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#B91C1C] shadow-sm">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-[#B91C1C] shrink-0" />
             <div>
@@ -384,7 +508,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {isProofPending && (
-        <div className="p-4 bg-[#FEF6D8] border border-[#FADC59]/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#5B4300] shadow-sm">
+        <div className="shrink-0 p-4 bg-[#FEF6D8] border border-[#FADC59]/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#5B4300] shadow-sm">
           <div className="flex items-center gap-2.5">
             <ShieldCheck className="w-5 h-5 shrink-0" />
             <div>
@@ -411,67 +535,142 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* Two Column Layout: Document (7 cols) + Action Cards (5 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* LEFT COLUMN: PAPER INVOICE WITH ROTATED GREEN PAID STAMP */}
-        <div className="lg:col-span-7">
-          <PaperInvoice
-            invoiceNumber={invoice.invoice_number}
-            issueDate={invoice.issue_date}
-            dueDate={invoice.due_date}
-            clientName={invoice.client_name || 'Client Account'}
-            clientAttn={invoice.client_attn || undefined}
-            clientDesignation={invoice.client_designation || undefined}
-            clientEmail={invoice.client_email || undefined}
-            clientPhone={invoice.client_phone || undefined}
-            clientAddress={invoice.client_address || undefined}
-            clientCity={invoice.client_city || undefined}
-            clientState={invoice.client_state || undefined}
-            clientPincode={invoice.client_pincode || undefined}
-            clientGstin={invoice.client_gstin || undefined}
-            companyName={invoice.company_name || undefined}
-            companyAddress={invoice.company_address || undefined}
-            companyGstin={invoice.company_gstin || undefined}
-            companyEmail={invoice.company_email || undefined}
-            companyPhone={invoice.company_phone || undefined}
-            companyWebsite={invoice.company_website || undefined}
-            companyTagline={invoice.company_tagline || undefined}
-            logoSrc={invoice.company_logo_url || '/brand/krws-mark.png'}
-            projectName={invoice.project_name || undefined}
-            projectRef={invoice.project_ref || undefined}
-            ledger={invoice.ledger || undefined}
-            coversFrom={invoice.covers_from || undefined}
-            coversTo={invoice.covers_to || undefined}
-            invoiceType={invoice.invoice_type}
-            items={previewItems}
-            subtotalPaise={invoice.subtotal_paise || 0}
-            taxPaise={invoice.tax_paise || 0}
-            taxRatePercent={invoice.tax_rate_percent ?? 0}
-            totalPaise={invoice.total_paise || 0}
-            status={invoice.status}
-            isPaid={isPaid}
-            paidAt={invoice.paid_at || undefined}
-            parentInvoiceNumber={invoice.parent_invoice_number || undefined}
-            notes={invoice.notes || undefined}
-            terms={invoice.payment_terms || undefined}
-            bankDetails={{
-              beneficiaryName: invoice.payment_bank_beneficiary_name,
-              bankName: invoice.payment_bank_name,
-              accountNumber: invoice.payment_bank_account_number,
-              ifsc: invoice.payment_bank_ifsc,
-              upiId: invoice.payment_upi_id,
-              blob: invoice.payment_bank_upi_details,
-            }}
-            upiQrSrc={qrSrc || undefined}
-          />
-        </div>
+      {/* Preview | sidebar — stack on small/tablet; side-by-side on xl+ */}
+      <div className="grid min-h-0 grid-cols-1 gap-4 sm:gap-6 xl:flex-1 xl:grid-cols-12 xl:overflow-hidden">
+        <section
+          aria-label="Invoice preview"
+          className="flex min-h-0 min-w-0 flex-col xl:col-span-8 xl:overflow-hidden"
+        >
+          <InvoicePaperStage
+            paperSize={paperSize}
+            onPaperSizeChange={setPaperSize}
+            orientation={paperOrientation}
+            onOrientationChange={setPaperOrientation}
+            fillViewport
+            className="min-h-[22rem] sm:min-h-[28rem] xl:min-h-0 xl:h-full"
+            footerCompany={invoice.company_name || 'KR Web Solution'}
+            footerMeta={[
+              (invoice.company_website || '').replace(/^https?:\/\//, '') || null,
+              invoice.company_email || null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || null}
+            watermarkSrc={invoice.company_logo_url || '/brand/krws-mark.png'}
+            toolbarRight={
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="inline-flex h-9 w-9 items-center justify-center p-0"
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  title={isDownloadingPdf ? 'Downloading…' : 'Download PDF'}
+                  aria-label={isDownloadingPdf ? 'Downloading PDF' : 'Download PDF'}
+                >
+                  {isDownloadingPdf ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <DownloadIcon size={16} />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="inline-flex h-9 w-9 items-center justify-center border border-[#E6E8EE] p-0"
+                  onClick={handleViewPdf}
+                  disabled={isViewingPdf}
+                  title={isViewingPdf ? 'Opening…' : 'View PDF'}
+                  aria-label={isViewingPdf ? 'Opening PDF' : 'View PDF'}
+                >
+                  {isViewingPdf ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <PrinterCheckIcon size={16} />
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <PaperInvoice
+              paperSize={paperSize}
+              invoiceNumber={invoice.invoice_number}
+              issueDate={invoice.issue_date}
+              dueDate={invoice.due_date}
+              clientName={invoice.client_name || 'Client Account'}
+              clientEmail={invoice.client_email || undefined}
+              clientPhone={invoice.client_phone || undefined}
+              clientAddress={invoice.client_address || undefined}
+              clientCity={invoice.client_city || undefined}
+              clientState={invoice.client_state || undefined}
+              clientPincode={invoice.client_pincode || undefined}
+              clientGstin={invoice.client_gstin || undefined}
+              clientPan={invoice.client_pan || undefined}
+              clientStateCode={invoice.client_state_code || undefined}
+              companyName={invoice.company_name || undefined}
+              companyAddress={invoice.company_address || undefined}
+              companyGstin={invoice.company_gstin || undefined}
+              companyPan={invoice.company_pan || undefined}
+              companyEmail={invoice.company_email || undefined}
+              companyPhone={invoice.company_phone || undefined}
+              companyWebsite={invoice.company_website || undefined}
+              companyTagline={invoice.company_tagline || undefined}
+              gstUnregistered={!!invoice.gst_unregistered}
+              logoSrc={invoice.company_logo_url || '/brand/krws-mark.png'}
+              projectName={invoice.project_name || undefined}
+              projectRef={invoice.project_ref || undefined}
+              ledger={invoice.ledger || undefined}
+              coversFrom={invoice.covers_from || undefined}
+              coversTo={invoice.covers_to || undefined}
+              invoiceType={invoice.invoice_type}
+              gstEnabled={invoice.gst_enabled}
+              items={previewItems}
+              subtotalPaise={invoice.subtotal_paise || 0}
+              taxPaise={invoice.tax_paise || 0}
+              taxRatePercent={invoice.tax_rate_percent ?? 0}
+              cgstPaise={cgst}
+              sgstPaise={sgst}
+              igstPaise={igst}
+              discountPaise={invoice.discount_paise || 0}
+              roundOffPaise={invoice.round_off_paise || 0}
+              amountPaidPaise={invoice.amount_paid_paise || 0}
+              balanceDuePaise={invoice.balance_due_paise}
+              totalPaise={invoice.total_paise || 0}
+              amountInWords={invoice.amount_in_words || undefined}
+              placeOfSupply={invoice.place_of_supply || undefined}
+              poNumber={invoice.po_number || undefined}
+              status={invoice.status}
+              isPaid={isPaid}
+              paidAt={invoice.paid_at || undefined}
+              parentInvoiceNumber={invoice.parent_invoice_number || undefined}
+              notes={invoice.notes || undefined}
+              terms={invoice.payment_terms || undefined}
+              resolvedTerms={invoice.resolved_terms || undefined}
+              bankDetails={{
+                beneficiaryName: invoice.payment_bank_beneficiary_name,
+                bankName: invoice.payment_bank_name,
+                accountNumber: invoice.payment_bank_account_number,
+                ifsc: invoice.payment_bank_ifsc,
+                upiId: invoice.payment_upi_id,
+                paypalId: invoice.payment_paypal_id,
+                blob: invoice.payment_bank_upi_details,
+              }}
+              wireInstructions={wireLines.length ? wireLines : undefined}
+              payments={invoice.payments || undefined}
+              upiQrSrc={qrSrc || undefined}
+            />
+          </InvoicePaperStage>
+        </section>
 
-        {/* RIGHT COLUMN: ACTIONS & AUDIT */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* RIGHT COLUMN: payment, proof, actions, audit */}
+        <aside
+          aria-label="Invoice actions and payment"
+          className="flex min-h-0 min-w-0 flex-col xl:col-span-4 xl:overflow-hidden"
+        >
+          <div className="space-y-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overscroll-contain xl:pr-0.5">
           {showPayPanel && (
             <SectionCard
-              title="Pay via UPI / Bank"
-              subtitle="No online gateway — use company UPI QR or bank transfer"
+              title="Pay via UPI / Bank / PayPal"
+              subtitle="No online gateway — use company UPI QR, bank transfer, or PayPal"
               icon={<Building2 className="w-4 h-4" />}
             >
               <div className="space-y-3 text-xs">
@@ -482,64 +681,102 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     className="mx-auto h-40 w-40 rounded-xl border border-[#E6E8EE] bg-white object-contain p-2"
                   />
                 )}
-                {invoice.payment_upi_id && (
-                  <div className="flex items-center justify-between gap-2 rounded-xl border border-[#E6E8EE] bg-[#F6F7F9] px-3 py-2.5">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
-                        UPI ID
-                      </p>
-                      <p className="font-mono text-sm font-semibold text-[#0F172A]">
-                        {invoice.payment_upi_id}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(invoice.payment_upi_id || '');
-                          toast.success('UPI ID copied');
-                        } catch {
-                          toast.error('Could not copy');
-                        }
-                      }}
+                {(
+                  [
+                    {
+                      label: 'UPI ID',
+                      value: invoice.payment_upi_id,
+                      copyToast: 'UPI ID copied',
+                    },
+                    {
+                      label: 'PayPal',
+                      value: invoice.payment_paypal_id,
+                      copyToast: 'PayPal ID copied',
+                    },
+                  ] as const
+                )
+                  .filter((row) => row.value)
+                  .map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-[#E6E8EE] bg-[#F6F7F9] px-3 py-2.5"
                     >
-                      <Copy className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                )}
-                <div className="rounded-xl border border-[#E6E8EE] bg-white px-3 py-2.5 space-y-1 text-[#0F172A]">
-                  {invoice.payment_bank_beneficiary_name && (
-                    <p>
-                      <span className="text-[#64748B]">Beneficiary: </span>
-                      {invoice.payment_bank_beneficiary_name}
-                    </p>
-                  )}
-                  {invoice.payment_bank_name && (
-                    <p>
-                      <span className="text-[#64748B]">Bank: </span>
-                      {invoice.payment_bank_name}
-                    </p>
-                  )}
-                  {invoice.payment_bank_account_number && (
-                    <p>
-                      <span className="text-[#64748B]">A/C: </span>
-                      {invoice.payment_bank_account_number}
-                    </p>
-                  )}
-                  {invoice.payment_bank_ifsc && (
-                    <p>
-                      <span className="text-[#64748B]">IFSC: </span>
-                      {invoice.payment_bank_ifsc}
-                    </p>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                          {row.label}
+                        </p>
+                        <p className="truncate font-mono text-sm font-semibold text-[#0F172A]">
+                          {row.value}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 shrink-0 px-2"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(row.value || '');
+                            toast.success(row.copyToast);
+                          } catch {
+                            toast.error('Could not copy');
+                          }
+                        }}
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                <div className="overflow-hidden rounded-xl border border-[#E6E8EE] bg-white text-[#0F172A]">
+                  {(
+                    [
+                      {
+                        label: 'Beneficiary',
+                        value: invoice.payment_bank_beneficiary_name,
+                      },
+                      { label: 'Bank', value: invoice.payment_bank_name },
+                      {
+                        label: 'Account No.',
+                        value: invoice.payment_bank_account_number,
+                      },
+                      { label: 'IFSC', value: invoice.payment_bank_ifsc },
+                    ] as const
+                  )
+                    .filter((row) => row.value)
+                    .map((row, i) => (
+                      <div
+                        key={row.label}
+                        className={`grid grid-cols-[34%_1fr] text-xs ${
+                          i > 0 ? 'border-t border-[#E6E8EE]' : ''
+                        }`}
+                      >
+                        <div className="bg-[#F8FAFC] px-3 py-2 font-medium text-[#64748B]">
+                          {row.label}
+                        </div>
+                        <div className="break-all px-3 py-2 font-semibold">
+                          {row.value}
+                        </div>
+                      </div>
+                    ))}
+                  {wireLines.length > 0 && (
+                    <div className="space-y-0.5 border-t border-[#E6E8EE] px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                        Wire / NEFT
+                      </p>
+                      {wireLines.map((line, i) => (
+                        <p key={i} className="text-[11px] text-[#64748B]">
+                          • {line}
+                        </p>
+                      ))}
+                    </div>
                   )}
                   {!invoice.payment_upi_id &&
+                    !invoice.payment_paypal_id &&
                     !invoice.payment_bank_account_number &&
-                    !qrSrc && (
-                      <p className="text-[#64748B]">
+                    !qrSrc &&
+                    wireLines.length === 0 && (
+                      <p className="px-3 py-2.5 text-[#64748B]">
                         {invoice.payment_bank_upi_details ||
-                          'Payment details will appear once the company configures bank / UPI in Settings.'}
+                          'Payment details will appear once the company configures bank / UPI / PayPal in Settings.'}
                       </p>
                     )}
                 </div>
@@ -656,35 +893,62 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </Button>
               )}
 
-              {isFounder && !isPaid && !isCancelled && !isCreditNote && !isProofPending && (
+              {canSoftEdit && (
                 <Link href={`/invoices/${invoice.id}/edit`} className="block">
                   <Button variant="secondary" className="w-full text-xs">
                     <Pencil className="w-3.5 h-3.5 mr-1.5" />
-                    <span>Edit invoice</span>
+                    <span>
+                      {documentLocked ? 'Adjust notes / due date' : 'Edit invoice'}
+                    </span>
                   </Button>
                 </Link>
               )}
-
-              {isFounder && !isCancelled && !isCreditNote && ['sent', 'overdue', 'draft', 'proof_pending'].includes(invoice.status) && (
-                <Button
-                  variant="secondary"
-                  className="w-full text-xs"
-                  onClick={() => setShowCancelPrompt(true)}
-                >
-                  <Ban className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Cancel invoice</span>
-                </Button>
+              {isPaid && isFounder && (
+                <p className="text-[11px] leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  Paid invoice is locked. Company, client, and amounts are frozen.
+                  Use a credit note or debit note for corrections.
+                </p>
               )}
 
-              {isFounder && !isCancelled && !isCreditNote && ['sent', 'overdue', 'paid'].includes(invoice.status) && (
-                <Button
-                  variant="secondary"
-                  className="w-full text-xs"
-                  onClick={() => setShowCreditPrompt(true)}
-                >
-                  <Receipt className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Issue credit note</span>
-                </Button>
+              {isFounder && !isCancelled && !isAdjustmentNote && ['sent', 'overdue', 'draft', 'proof_pending'].includes(invoice.status) && (
+                <>
+                  {(invoice.can_delete === false || invoice.can_change_gst === false) && (
+                    <p className="text-[11px] leading-relaxed text-[#64748B] bg-[#F8FAFC] border border-[#E6E8EE] rounded-xl px-3 py-2">
+                      A later number exists in this series, so delete / GST switch are blocked.
+                      Cancel this invoice to freeze it, then create a new one with the same details
+                      (GST or non-GST).
+                    </p>
+                  )}
+                  <Button
+                    variant="secondary"
+                    className="w-full text-xs"
+                    onClick={() => setShowCancelPrompt(true)}
+                  >
+                    <Ban className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Cancel invoice</span>
+                  </Button>
+                </>
+              )}
+
+              {isFounder && !isCancelled && !isAdjustmentNote && ['sent', 'overdue', 'paid'].includes(invoice.status) && (
+                <>
+                  <Button
+                    variant="secondary"
+                    className="w-full text-xs"
+                    onClick={() => setShowCreditPrompt(true)}
+                  >
+                    <Receipt className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Issue credit note</span>
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full text-xs"
+                    onClick={() => setShowDebitPrompt(true)}
+                  >
+                    <Receipt className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Issue debit note</span>
+                  </Button>
+                </>
               )}
 
               {isFounder && (
@@ -718,17 +982,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </Button>
               )}
 
-              <a
-                href={invoicesApi.downloadPdfUrl(invoice.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
-                <Button variant="ghost" className="w-full text-xs border border-[#E6E8EE]">
-                  <Printer className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Print / View Official PDF</span>
-                </Button>
-              </a>
+              <p className="pt-1 text-[11px] leading-relaxed text-[#94A3B8]">
+                PDF download uses the paper size selected in the preview toolbar and saves as{' '}
+                <span className="font-mono text-[#64748B]">{invoice.invoice_number}.pdf</span>.
+              </p>
             </div>
           </SectionCard>
 
@@ -787,12 +1044,54 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </span>
               </div>
 
-              <div className="flex items-center justify-between py-1">
-                <span className="text-[#64748B]">GST ({invoice.tax_rate_percent || 18}%):</span>
-                <span className="font-mono font-semibold text-[#0F172A]">
-                  ₹{((invoice.tax_paise || 0) / 100).toLocaleString('en-IN')}
-                </span>
-              </div>
+              {hasSplitGst ? (
+                <>
+                  {cgst > 0 && (
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-[#64748B]">
+                        CGST ({((invoice.tax_rate_percent || 0) / 2).toFixed(1)}%):
+                      </span>
+                      <span className="font-mono font-semibold text-[#0F172A]">
+                        ₹{(cgst / 100).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  )}
+                  {sgst > 0 && (
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-[#64748B]">
+                        SGST ({((invoice.tax_rate_percent || 0) / 2).toFixed(1)}%):
+                      </span>
+                      <span className="font-mono font-semibold text-[#0F172A]">
+                        ₹{(sgst / 100).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  )}
+                  {igst > 0 && (
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-[#64748B]">
+                        IGST ({invoice.tax_rate_percent || 0}%):
+                      </span>
+                      <span className="font-mono font-semibold text-[#0F172A]">
+                        ₹{(igst / 100).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (invoice.tax_paise || 0) > 0 ? (
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-[#64748B]">
+                    GST ({invoice.tax_rate_percent ?? 0}%):
+                  </span>
+                  <span className="font-mono font-semibold text-[#0F172A]">
+                    ₹{((invoice.tax_paise || 0) / 100).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-[#64748B]">GST:</span>
+                  <span className="font-mono font-semibold text-[#0F172A]">Nil</span>
+                </div>
+              )}
 
               <div className="flex items-center justify-between py-2 border-t border-[#E6E8EE] text-sm font-bold">
                 <span className="text-[#0F172A]">Total Invoice:</span>
@@ -802,7 +1101,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
           </SectionCard>
-        </div>
+          </div>
+        </aside>
       </div>
 
       {/* LATE FEE DECISION MODAL */}
@@ -1012,7 +1312,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           onClose={() => setShowCancelPrompt(false)}
           onConfirm={handleCancel}
           title="Cancel invoice?"
-          message={`Cancel "${invoice.invoice_number}"? It will stay in the ledger as cancelled and can no longer be edited or collected.`}
+          message={`Cancel "${invoice.invoice_number}"? The number and details will stay frozen (same as paid). You can’t edit or delete it afterward — create a new invoice if you need the same work on another GST series.`}
           confirmLabel={isCancelling ? 'Cancelling…' : 'Cancel invoice'}
           variant="danger"
         />
@@ -1028,6 +1328,55 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           confirmLabel={isCrediting ? 'Creating…' : 'Issue credit note'}
           variant="danger"
         />
+      )}
+
+      {showDebitPrompt && (
+        <Modal
+          isOpen={showDebitPrompt}
+          onClose={() => setShowDebitPrompt(false)}
+          title={`Debit note: ${invoice.invoice_number}`}
+        >
+          <div className="space-y-4 text-sm">
+            <p className="text-xs text-[#64748B]">
+              Creates a new KRWS-DBN document for an additional charge linked to this invoice.
+            </p>
+            <div>
+              <label className="text-xs font-semibold text-[#0F172A]">Amount (₹) *</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={debitAmountRupees}
+                onChange={(e) => setDebitAmountRupees(e.target.value)}
+                className="mt-1 w-full h-10 rounded-lg border border-[#E6E8EE] px-3 font-mono text-sm"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#0F172A]">Reason (optional)</label>
+              <input
+                type="text"
+                value={debitReason}
+                onChange={(e) => setDebitReason(e.target.value)}
+                className="mt-1 w-full h-10 rounded-lg border border-[#E6E8EE] px-3 text-sm"
+                placeholder="e.g. Out-of-scope change request"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowDebitPrompt(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleDebitNote}
+                isLoading={isDebiting}
+              >
+                Issue debit note
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

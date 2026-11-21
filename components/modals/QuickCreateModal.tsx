@@ -3,14 +3,13 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  X,
   FolderPlus,
   UserPlus,
   Receipt,
   Building2,
   ArrowRight,
-  Sparkles,
 } from 'lucide-react';
+import { PlusIcon, XIcon } from '@/components/icons';
 
 interface QuickCreateModalProps {
   isOpen: boolean;
@@ -78,7 +77,7 @@ export function QuickCreateModal({ isOpen, onClose }: QuickCreateModalProps) {
         <div className="p-4 border-b border-[#E7E9EF] flex items-center justify-between bg-[#F8F9FB]">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[#620C13] text-[#FCDD59] flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
+              <PlusIcon size={16} className="text-[#FCDD59]" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-[#191919]">Quick Create Record</h2>
@@ -89,8 +88,9 @@ export function QuickCreateModal({ isOpen, onClose }: QuickCreateModalProps) {
             type="button"
             onClick={onClose}
             className="p-1 text-[#667085] hover:text-[#191919] rounded-md hover:bg-slate-200/50"
+            aria-label="Close"
           >
-            <X className="w-4 h-4" />
+            <XIcon size={16} />
           </button>
         </div>
 

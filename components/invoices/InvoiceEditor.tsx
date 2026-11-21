@@ -9,24 +9,77 @@ import {
   ArrowLeft,
   Plus,
   Trash2,
-  FileText,
   AlertCircle,
-  Building2,
   Send,
   Save,
-  Clock,
   IndianRupee,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { SectionCard } from '@/components/ui/SectionCard';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { PaperInvoice, InvoiceLineItem } from '@/components/ui/PaperInvoice';
+import { InvoicePaperStage } from '@/components/ui/InvoicePaperStage';
 import { PageSkeleton } from '@/components/ui/Skeleton';
+import { Switch } from '@/components/ui/Switch';
+import { isInvoiceDocumentLocked } from '@/lib/invoices/labels';
+import { amountInWordsInr } from '@/lib/money/amountInWords';
+import { splitGstPaise } from '@/lib/money/gstSplit';
+import type { InvoicePaperOrientation, InvoicePaperSize } from '@/lib/api/client';
 import { toast } from 'sonner';
+
+/** Live preview of the GST / non-GST number series (final seq assigned on save). */
+function previewNumberForGst(
+  number: string | null | undefined,
+  gstOn: boolean,
+  fallback = 'DRAFT-PREVIEW'
+): string {
+  const raw = (number || '').trim();
+  if (!raw) return fallback;
+  const parts = raw.toUpperCase().split('-');
+  // KRWS-MNT-2026-G-1003
+  if (parts.length === 5 && parts[3] === 'G' && /^\d+$/.test(parts[4])) {
+    if (gstOn) return `${parts[0]}-${parts[1]}-${parts[2]}-${parts[4]}`;
+    return raw;
+  }
+  // KRWS-MNT-2026-1003
+  if (parts.length === 4 && /^\d+$/.test(parts[3])) {
+    if (!gstOn) return `${parts[0]}-${parts[1]}-${parts[2]}-G-${parts[3]}`;
+    return raw;
+  }
+  return raw;
+}
+
+function EditorPanel({
+  title,
+  subtitle,
+  action,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[2px] border border-[#E8EAEE] bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+      <header className="flex flex-wrap items-start justify-between gap-2 border-b border-[#EEF0F4] px-4 py-3 sm:px-5">
+        <div className="min-w-0">
+          <h2 className="text-[13px] font-semibold tracking-wide text-[#0F172A] uppercase">
+            {title}
+          </h2>
+          {subtitle ? (
+            <p className="mt-0.5 text-[11px] leading-snug text-[#64748B]">{subtitle}</p>
+          ) : null}
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </header>
+      <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">{children}</div>
+    </section>
+  );
+}
 
 interface FormLineItem {
   id: string;
@@ -86,7 +139,8 @@ export function InvoiceEditor({
   const [taxRatePercent, setTaxRatePercent] = useState(0);
   const [gstEnabled, setGstEnabled] = useState(false);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
-  const [notes, setNotes] = useState('Payment due within 15 days of invoice date.');
+  const [notes, setNotes] = useState('');
+  const [upiOverride, setUpiOverride] = useState('');
   const [items, setItems] = useState<FormLineItem[]>([
     {
       id: '1',
@@ -99,6 +153,9 @@ export function InvoiceEditor({
   const [isLoadingMeta, setIsLoadingMeta] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paperSize, setPaperSize] = useState<InvoicePaperSize>('a4');
+  const [paperOrientation, setPaperOrientation] =
+    useState<InvoicePaperOrientation>('portrait');
 
   useEffect(() => {
     async function load() {
@@ -111,14 +168,18 @@ export function InvoiceEditor({
         setClients(cList);
         setProjects(pList);
         if (st) setCompanySettings(st);
-        const gstOn = !!st?.gst_enabled;
-        setGstEnabled(gstOn);
-        const defaultRate = gstOn ? Number(st?.default_tax_rate ?? 0) : 0;
+        const settingsGst = !!st?.gst_enabled;
+        const defaultRate = settingsGst ? Number(st?.default_tax_rate ?? 0) : 0;
 
         if (isEdit && invoiceId) {
           const inv = await invoicesApi.get(invoiceId);
-          if (inv.status === 'paid') {
-            toast.error('Paid invoices cannot be edited');
+          const lockedStatus = ['paid', 'cancelled', 'void'].includes(inv.status);
+          if (lockedStatus) {
+            toast.error(
+              inv.status === 'paid'
+                ? 'Paid invoices cannot be edited'
+                : 'Cancelled invoices cannot be edited'
+            );
             router.replace(`/invoices/${invoiceId}`);
             return;
           }
@@ -130,8 +191,15 @@ export function InvoiceEditor({
           if (inv.covers_from) setCoverageStart(inv.covers_from);
           setIssueDate(inv.issue_date);
           setDueDate(inv.due_date);
-          setTaxRatePercent(gstOn ? Number(inv.tax_rate_percent ?? defaultRate) : 0);
+          // Per-invoice GST: null/undefined follows Settings; explicit true/false wins.
+          const invGst =
+            inv.gst_enabled === null || inv.gst_enabled === undefined
+              ? settingsGst
+              : !!inv.gst_enabled;
+          setGstEnabled(invGst);
+          setTaxRatePercent(invGst ? Number(inv.tax_rate_percent ?? defaultRate) : 0);
           setNotes(inv.notes || '');
+          setUpiOverride(inv.upi_id_override || '');
           setItems(
             (inv.items || []).map((it, idx) => ({
               id: it.id || String(idx + 1),
@@ -141,6 +209,8 @@ export function InvoiceEditor({
             }))
           );
         } else {
+          // New invoice: follow Settings GST button by default.
+          setGstEnabled(settingsGst);
           setTaxRatePercent(defaultRate);
           if (!initialClientId && cList.length > 0) {
             setClientId(cList[0].id);
@@ -232,10 +302,45 @@ export function InvoiceEditor({
     }
     if (!notesEdited.current) {
       setNotes(
-        `Maintenance for ${safeMonths} month${safeMonths === 1 ? '' : 's'} (${prettyDate(start)} to ${prettyDate(end)}). Payment due within ${PAYMENT_DAYS} days of invoice date.`
+        `Maintenance for ${safeMonths} month${safeMonths === 1 ? '' : 's'} (${prettyDate(start)} to ${prettyDate(end)}).`
       );
     }
   }, [isMaintenance, safeMonths, monthlyRatePaise, amcStart, issueDate, isEdit]);
+
+  const contentLocked = !!(existingInvoice && isInvoiceDocumentLocked(existingInvoice));
+  // Create: always free. Edit: only when API says unpaid tip-of-series.
+  const gstSwitchLocked =
+    contentLocked ||
+    (isEdit && existingInvoice != null && existingInvoice.can_change_gst === false);
+
+  const storedNumber = existingInvoice?.invoice_number || '';
+  const previewInvoiceNumber = useMemo(() => {
+    if (contentLocked) return storedNumber || 'DRAFT-PREVIEW';
+    const storedGst =
+      !!storedNumber &&
+      !/-G-\d+$/i.test(storedNumber) &&
+      /-\d+$/.test(storedNumber);
+    // Toggle flipped → use server peek (fills revoked gaps e.g. 1002 before 1003)
+    if (
+      isEdit &&
+      existingInvoice?.gst_toggle_preview_number &&
+      gstEnabled !== storedGst
+    ) {
+      return existingInvoice.gst_toggle_preview_number;
+    }
+    return previewNumberForGst(storedNumber || null, gstEnabled, 'DRAFT-PREVIEW');
+  }, [
+    contentLocked,
+    storedNumber,
+    gstEnabled,
+    isEdit,
+    existingInvoice?.gst_toggle_preview_number,
+  ]);
+  const numberWillChangeOnSave =
+    isEdit &&
+    !contentLocked &&
+    !!storedNumber &&
+    previewInvoiceNumber.toUpperCase() !== storedNumber.toUpperCase();
 
   const subtotalPaise = useMemo(() => {
     return items.reduce((sum, it) => {
@@ -302,37 +407,51 @@ export function InvoiceEditor({
       return;
     }
 
-    if (isMaintenance && !monthlyRatePaise && items.every((it) => !(it.unit_rate_rupees > 0))) {
-      setError('Set the monthly maintenance amount on this project, or type a unit rate.');
-      return;
-    }
-    const validItems = items.filter((it) => it.description.trim() && it.unit_rate_rupees > 0);
-    if (!validItems.length) {
-      setError('Please add at least one line item with a description and unit rate.');
-      return;
-    }
-    const coverStart = issueDate || amcStart;
-    const coverEnd = addMonthsMinusDay(coverStart, safeMonths);
-    const payload: Record<string, unknown> = {
-      invoice_type: isMaintenance ? 'amc' : invoiceType === 'project' ? 'custom_dev' : invoiceType,
-      issue_date: issueDate,
-      due_date: dueDate,
-      tax_rate_percent: taxRatePercent,
-      notes: notes.trim() || undefined,
-      items: validItems.map((it) => ({
-        description: it.description.trim(),
-        quantity: it.quantity,
-        unit_rate_paise: Math.round(it.unit_rate_rupees * 100),
-      })),
-    };
-    if (!isEdit) {
-      payload.project_id = projectId;
-    }
-    if (isMaintenance) {
-      payload.period_months = safeMonths;
-      payload.covers_from = coverStart;
-      payload.covers_to = coverEnd;
-      payload.monthly_rate_paise = Math.round((validItems[0].unit_rate_rupees || 0) * 100) || monthlyRatePaise;
+    let payload: Record<string, unknown>;
+
+    if (contentLocked) {
+      payload = {
+        due_date: dueDate,
+        notes: notes.trim() || undefined,
+        upi_id_override: upiOverride.trim() || null,
+      };
+    } else {
+      if (isMaintenance && !monthlyRatePaise && items.every((it) => !(it.unit_rate_rupees > 0))) {
+        setError('Set the monthly maintenance amount on this project, or type a unit rate.');
+        return;
+      }
+      const validItems = items.filter((it) => it.description.trim() && it.unit_rate_rupees > 0);
+      if (!validItems.length) {
+        setError('Please add at least one line item with a description and unit rate.');
+        return;
+      }
+      const coverStart = issueDate || amcStart;
+      const coverEnd = addMonthsMinusDay(coverStart, safeMonths);
+      payload = {
+        invoice_type: isMaintenance ? 'amc' : invoiceType === 'project' ? 'custom_dev' : invoiceType,
+        issue_date: issueDate,
+        due_date: dueDate,
+        gst_enabled: gstEnabled,
+        tax_rate_percent: gstEnabled ? taxRatePercent : 0,
+        notes: notes.trim() || undefined,
+        upi_id_override: upiOverride.trim() || null,
+        items: validItems.map((it) => ({
+          description: it.description.trim(),
+          quantity: it.quantity,
+          unit_rate_paise: Math.round(it.unit_rate_rupees * 100),
+          ...(gstEnabled ? {} : { hsn_sac: null }),
+        })),
+      };
+      if (!isEdit) {
+        payload.project_id = projectId;
+      }
+      if (isMaintenance) {
+        payload.period_months = safeMonths;
+        payload.covers_from = coverStart;
+        payload.covers_to = coverEnd;
+        payload.monthly_rate_paise =
+          Math.round((validItems[0].unit_rate_rupees || 0) * 100) || monthlyRatePaise;
+      }
     }
 
     setError(null);
@@ -342,7 +461,14 @@ export function InvoiceEditor({
       let saved: Invoice;
       if (isEdit && invoiceId) {
         saved = await invoicesApi.update(invoiceId, payload as any);
-        toast.success(`Invoice ${saved.invoice_number} updated`);
+        const seriesSwitched = saved.id !== invoiceId;
+        if (seriesSwitched) {
+          toast.success(
+            `GST series switched — new invoice ${saved.invoice_number} (previous draft removed)`
+          );
+        } else {
+          toast.success(`Invoice ${saved.invoice_number} updated`);
+        }
       } else {
         saved = await invoicesApi.create({
           ...payload,
@@ -369,21 +495,89 @@ export function InvoiceEditor({
         }
       }
 
-      router.push(`/invoices/${saved.id}`);
+      router.replace(`/invoices/${saved.id}`);
     } catch (err: any) {
-      setError(err?.message || (isEdit ? 'Failed to update invoice.' : 'Failed to create invoice.'));
+      const msg =
+        err?.message || (isEdit ? 'Failed to update invoice.' : 'Failed to create invoice.');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const selectedClient = clients.find((c) => c.id === clientId);
+  const liveGstSplit = useMemo(
+    () =>
+      splitGstPaise(taxPaise, {
+        gstEnabled,
+        supplierStateCode:
+          companySettings?.company_state_code || companySettings?.company_gstin,
+        customerStateCode: selectedClient?.state_code || selectedClient?.gstin,
+      }),
+    [
+      taxPaise,
+      gstEnabled,
+      companySettings?.company_state_code,
+      companySettings?.company_gstin,
+      selectedClient?.state_code,
+      selectedClient?.gstin,
+    ]
+  );
+  const previewCgst = contentLocked
+    ? existingInvoice?.cgst_paise || 0
+    : liveGstSplit.cgst;
+  const previewSgst = contentLocked
+    ? existingInvoice?.sgst_paise || 0
+    : liveGstSplit.sgst;
+  const previewIgst = contentLocked
+    ? existingInvoice?.igst_paise || 0
+    : liveGstSplit.igst;
+  const previewAmountWords =
+    contentLocked && existingInvoice?.amount_in_words
+      ? existingInvoice.amount_in_words
+      : amountInWordsInr(totalPaise);
+  const previewBank = contentLocked
+    ? {
+        beneficiaryName: existingInvoice?.payment_bank_beneficiary_name,
+        bankName: existingInvoice?.payment_bank_name,
+        accountNumber: existingInvoice?.payment_bank_account_number,
+        ifsc: existingInvoice?.payment_bank_ifsc,
+        upiId: existingInvoice?.payment_upi_id || upiOverride || undefined,
+        paypalId: existingInvoice?.payment_paypal_id || undefined,
+        blob: existingInvoice?.payment_bank_upi_details,
+      }
+    : {
+        beneficiaryName: companySettings?.bank_beneficiary_name,
+        bankName: companySettings?.bank_name,
+        accountNumber: companySettings?.bank_account_number,
+        ifsc: companySettings?.bank_ifsc,
+        upiId: upiOverride || companySettings?.bank_upi_id,
+        paypalId: companySettings?.bank_paypal_id,
+        blob: companySettings?.bank_upi_details,
+      };
+  const previewWire = contentLocked
+    ? existingInvoice?.payment_wire_lines ||
+      (existingInvoice?.payment_bank_wire_instructions || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+    : companySettings?.bank_wire_instructions
+      ? companySettings.bank_wire_instructions
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
+      : undefined;
+  const previewQr = contentLocked
+    ? existingInvoice?.payment_upi_qr_url || undefined
+    : companySettings?.bank_upi_qr_url || undefined;
   const previewItems: InvoiceLineItem[] = items.map((it) => ({
     id: it.id,
     description: it.description || 'Deliverable item...',
     quantity: it.quantity,
     rate_rupees: it.unit_rate_rupees,
     amount_paise: Math.round((it.unit_rate_rupees || 0) * it.quantity * 100),
+    hsn_sac: companySettings?.default_sac_code || undefined,
   }));
 
   if (isLoadingMeta) {
@@ -404,15 +598,33 @@ export function InvoiceEditor({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
           <h1 className="text-2xl sm:text-[28px] font-bold text-[#0F172A] tracking-[-0.02em] font-heading">
-            {isEdit ? `Edit ${existingInvoice?.invoice_number || 'Invoice'}` : 'Create GST Invoice'}
+            {isEdit
+              ? contentLocked
+                ? `Adjust ${storedNumber || 'Invoice'}`
+                : `Edit ${previewInvoiceNumber || storedNumber || 'Invoice'}`
+              : 'Create invoice'}
           </h1>
           <p className="text-sm text-[#64748B] mt-1">
             {isEdit
-              ? 'Update line items and terms. Remaining project amount is shown below.'
-              : 'Build and dispatch customized GST invoices with live document preview.'}
+              ? contentLocked
+                ? 'Paid invoice is locked. You can only change notes, due date, and UPI override.'
+                : numberWillChangeOnSave
+                  ? `GST toggle will renumber on save → ${previewInvoiceNumber}`
+                  : 'Update details beside the live document preview.'
+              : 'Fill the form — the document preview updates as you type.'}
           </p>
         </div>
       </div>
+
+      {contentLocked && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-[16px] flex items-start gap-2.5 text-xs text-amber-900">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            Issued invoice content is frozen. Amounts, tax, and type cannot change. Issue a
+            credit note for corrections.
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-[#FDECEC] border border-rose-200 rounded-[16px] flex items-center gap-2.5 text-xs text-[#B91C1C]">
@@ -462,12 +674,11 @@ export function InvoiceEditor({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-7 space-y-6">
-          <SectionCard
-            title="Invoice Header Details"
-            subtitle="Customer selection and payment term dates"
-            icon={<Building2 className="w-4 h-4" />}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8 items-start">
+        <div className="xl:col-span-5 space-y-4 order-2 xl:order-1">
+          <EditorPanel
+            title="Invoice header"
+            subtitle="Client, type, dates, and GST series"
           >
             <div className="space-y-4">
               <FormField label="Client Account" required>
@@ -511,6 +722,7 @@ export function InvoiceEditor({
               <FormField label="Invoice Type">
                 <Select
                   value={invoiceType === 'project' ? 'custom_dev' : invoiceType}
+                  disabled={contentLocked}
                   onChange={(e) => {
                     const next = e.target.value;
                     setInvoiceType(next);
@@ -520,7 +732,7 @@ export function InvoiceEditor({
                       notesEdited.current = false;
                     } else if (items[0]?.id === 'amc') {
                       setItems([{ id: '1', description: '', quantity: 1, unit_rate_rupees: 0 }]);
-                      setNotes('Payment due within 15 days of invoice date.');
+                      setNotes('');
                     }
                   }}
                 >
@@ -529,6 +741,16 @@ export function InvoiceEditor({
                   <option value="hosting">Hosting (KRWS-HST)</option>
                   <option value="services">Services (KRWS-SVC)</option>
                   <option value="licensing">Licensing (KRWS-LIC)</option>
+                  <option value="advance">Advance (KRWS-ADV)</option>
+                  <option value="balance">Balance (KRWS-BAL)</option>
+                  <option value="mixed">Mixed (KRWS-MIX)</option>
+                  <option value="late_fee">Late Fee (KRWS-LTF)</option>
+                  <option value="credit_note" disabled>
+                    Credit Note (issue from invoice detail)
+                  </option>
+                  <option value="debit_note" disabled>
+                    Debit Note (issue from invoice detail)
+                  </option>
                 </Select>
               </FormField>
 
@@ -547,6 +769,7 @@ export function InvoiceEditor({
                     min={1}
                     max={36}
                     required
+                    disabled={contentLocked}
                     value={amcMonths}
                     onChange={(e) => {
                       lineEdited.current = false;
@@ -562,15 +785,13 @@ export function InvoiceEditor({
                   <Input
                     type="date"
                     required
+                    disabled={contentLocked}
                     value={issueDate}
                     onChange={(e) => {
                       const next = e.target.value;
                       dateEdited.current = true;
                       setIssueDate(next);
-                      if (next && !isMaintenance) {
-                        setDueDate(plusDays(next, PAYMENT_DAYS));
-                        setNotes(`Payment due within ${PAYMENT_DAYS} days of invoice date.`);
-                      } else if (next) {
+                      if (next) {
                         setDueDate(plusDays(next, PAYMENT_DAYS));
                       }
                     }}
@@ -582,33 +803,75 @@ export function InvoiceEditor({
                     required
                     value={dueDate}
                     onChange={(e) => {
-                      const next = e.target.value;
-                      setDueDate(next);
-                      if (!isMaintenance && issueDate && next) {
-                        const [y1, m1, d1] = issueDate.split('-').map(Number);
-                        const [y2, m2, d2] = next.split('-').map(Number);
-                        const start = new Date(y1, m1 - 1, d1);
-                        const end = new Date(y2, m2 - 1, d2);
-                        const days = Math.round((end.getTime() - start.getTime()) / 86400000);
-                        if (days > 0) setNotes(`Payment due within ${days} days of invoice date.`);
-                      }
+                      setDueDate(e.target.value);
                     }}
                   />
                 </FormField>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-[12px] border border-[#E6E8EE] bg-[#F8FAFC] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-[#0F172A]">Enable GST on this invoice</p>
+                  <p className="mt-0.5 text-xs text-[#64748B]">
+                    {gstSwitchLocked && isEdit
+                      ? 'GST series locked (later number exists). Cancel this invoice (keeps number frozen), then create a new one with/without GST.'
+                      : numberWillChangeOnSave
+                        ? `Preview number → ${previewInvoiceNumber}. Save to assign and store the new series number.`
+                        : `Default follows Settings${
+                            companySettings
+                              ? ` (currently ${companySettings.gst_enabled ? 'ON' : 'OFF'})`
+                              : ''
+                          }. Toggle GST to switch series; save stores the new number.`}
+                  </p>
+                </div>
+                <div
+                  role={gstSwitchLocked ? 'button' : undefined}
+                  tabIndex={gstSwitchLocked ? 0 : undefined}
+                  onClick={() => {
+                    if (!gstSwitchLocked) return;
+                    toast.error(
+                      "You can’t change GST on this invoice because a later invoice already exists in this number series. Cancel this invoice (number + details stay frozen), then create a new invoice with the same details on the GST or non-GST series you need."
+                    );
+                  }}
+                  onKeyDown={(e) => {
+                    if (!gstSwitchLocked) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toast.error(
+                        "You can’t change GST on this invoice because a later invoice already exists in this number series. Cancel this invoice (number + details stay frozen), then create a new invoice with the same details on the GST or non-GST series you need."
+                      );
+                    }
+                  }}
+                >
+                  <Switch
+                    checked={gstEnabled}
+                    disabled={gstSwitchLocked}
+                    onChange={(checked) => {
+                      setGstEnabled(checked);
+                      if (!checked) {
+                        setTaxRatePercent(0);
+                      } else if (taxRatePercent <= 0) {
+                        setTaxRatePercent(Number(companySettings?.default_tax_rate ?? 18) || 18);
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   label="GST tax rate (%)"
                   hint={
-                    gstEnabled
-                      ? 'GST is enabled in Settings'
-                      : 'GST is off in Settings — tax stays 0%'
+                    contentLocked
+                      ? 'Locked after payment'
+                      : gstEnabled
+                        ? 'Applied on this invoice only'
+                        : 'GST is off for this invoice — tax stays 0%'
                   }
                 >
                   <Select
                     value={String(gstEnabled ? taxRatePercent : 0)}
-                    disabled={!gstEnabled}
+                    disabled={!gstEnabled || contentLocked}
                     onChange={(e) => setTaxRatePercent(parseFloat(e.target.value) || 0)}
                   >
                     <option value="0">0% (Nil / Exempt)</option>
@@ -617,19 +880,34 @@ export function InvoiceEditor({
                     <option value="18">18% (Standard services GST)</option>
                   </Select>
                 </FormField>
+                <FormField
+                  label="UPI ID override"
+                  hint="Optional — overrides company UPI on this invoice only"
+                >
+                  <Input
+                    value={upiOverride}
+                    onChange={(e) => setUpiOverride(e.target.value)}
+                    placeholder={companySettings?.bank_upi_id || 'name@upi'}
+                  />
+                </FormField>
               </div>
             </div>
-          </SectionCard>
+          </EditorPanel>
 
-          <SectionCard
-            title="Line Items & Rates"
-            subtitle="Add deliverables and unit fee schedules"
-            icon={<FileText className="w-4 h-4" />}
-            headerSlot={
-              <Button variant="secondary" size="sm" onClick={handleAddItem} className="h-8 text-xs">
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                <span>+ Custom</span>
-              </Button>
+          <EditorPanel
+            title="Line items"
+            subtitle={
+              contentLocked
+                ? 'Line items are frozen after payment'
+                : 'Deliverables and unit rates'
+            }
+            action={
+              !contentLocked ? (
+                <Button variant="secondary" size="sm" onClick={handleAddItem} className="h-8 text-xs">
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  <span>Add line</span>
+                </Button>
+              ) : undefined
             }
           >
             <div className="space-y-3">
@@ -638,11 +916,11 @@ export function InvoiceEditor({
                 return (
                   <div
                     key={item.id}
-                    className="p-3.5 bg-[#F6F7F9] border border-[#E6E8EE] rounded-2xl space-y-3"
+                    className="space-y-3 border border-[#EEF0F4] bg-[#FAFBFC] px-3.5 py-3"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-[#0F172A]">Item #{index + 1}</span>
-                      {items.length > 1 && (
+                      {!contentLocked && items.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(item.id)}
@@ -657,6 +935,7 @@ export function InvoiceEditor({
                       <Input
                         placeholder="e.g. Frontend development & component integration"
                         value={item.description}
+                        disabled={contentLocked}
                         onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
                       />
                     </FormField>
@@ -665,6 +944,7 @@ export function InvoiceEditor({
                         <Input
                           type="number"
                           min="1"
+                          disabled={contentLocked}
                           value={item.quantity}
                           onChange={(e) =>
                             handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 1)
@@ -674,6 +954,7 @@ export function InvoiceEditor({
                       <FormField label="Unit Rate (₹)">
                         <CurrencyInput
                           value={item.unit_rate_rupees}
+                          disabled={contentLocked}
                           onChange={(val: string) =>
                             handleItemChange(item.id, 'unit_rate_rupees', parseFloat(val) || 0)
                           }
@@ -691,13 +972,9 @@ export function InvoiceEditor({
                 );
               })}
             </div>
-          </SectionCard>
+          </EditorPanel>
 
-          <SectionCard
-            title="Payment Terms & Notes"
-            subtitle="Visible on invoice footer"
-            icon={<Clock className="w-4 h-4" />}
-          >
+          <EditorPanel title="Notes" subtitle="Shown on the invoice footer">
             <Textarea
               rows={2}
               value={notes}
@@ -707,64 +984,195 @@ export function InvoiceEditor({
               }}
               placeholder="Bank details, wire instructions, or terms..."
             />
-          </SectionCard>
+          </EditorPanel>
         </div>
 
-        <div className="lg:col-span-5 sticky top-20 space-y-4">
+        <div className="xl:col-span-7 order-1 xl:order-2 xl:sticky xl:top-16 min-h-[22rem]">
+          <InvoicePaperStage
+            paperSize={paperSize}
+            onPaperSizeChange={setPaperSize}
+            orientation={paperOrientation}
+            onOrientationChange={setPaperOrientation}
+            className="min-h-[22rem] sm:min-h-[28rem]"
+            footerCompany={
+              (contentLocked
+                ? existingInvoice?.company_name
+                : companySettings?.company_name) || 'KR Web Solution'
+            }
+            footerMeta={[
+              (
+                (contentLocked
+                  ? existingInvoice?.company_website
+                  : companySettings?.company_website) || ''
+              ).replace(/^https?:\/\//, '') || null,
+              (contentLocked
+                ? existingInvoice?.company_email
+                : companySettings?.smtp_from_email) || null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || null}
+            watermarkSrc={
+              (contentLocked
+                ? existingInvoice?.company_logo_url
+                : companySettings?.company_logo_url) || '/brand/krws-mark.png'
+            }
+          >
           <PaperInvoice
-            invoiceNumber={existingInvoice?.invoice_number || 'DRAFT-PREVIEW'}
+            paperSize={paperSize}
+            invoiceNumber={previewInvoiceNumber}
             issueDate={issueDate}
             dueDate={dueDate}
-            clientName={selectedClient?.name || 'Selected Client'}
-            clientAttn={selectedClient?.primary_contact_name || undefined}
-            clientDesignation={selectedClient?.designation || undefined}
+            clientName={
+              contentLocked
+                ? existingInvoice?.client_name || selectedClient?.name || 'Selected Client'
+                : selectedClient?.name || 'Selected Client'
+            }
             clientEmail={
-              selectedClient?.contact_email || selectedClient?.email || undefined
+              contentLocked
+                ? existingInvoice?.client_email || undefined
+                : selectedClient?.email || undefined
             }
             clientPhone={
-              selectedClient?.contact_phone || selectedClient?.phone || undefined
+              contentLocked
+                ? existingInvoice?.client_phone || undefined
+                : selectedClient?.phone || undefined
             }
-            clientAddress={selectedClient?.address || undefined}
-            clientCity={selectedClient?.city || undefined}
-            clientState={selectedClient?.state || undefined}
-            clientPincode={selectedClient?.pincode || undefined}
-            clientGstin={selectedClient?.gstin || undefined}
-            companyName={companySettings?.company_name || undefined}
-            companyAddress={companySettings?.company_address || undefined}
+            clientAddress={
+              contentLocked
+                ? existingInvoice?.client_address || undefined
+                : selectedClient?.address || undefined
+            }
+            clientCity={
+              contentLocked
+                ? existingInvoice?.client_city || undefined
+                : selectedClient?.city || undefined
+            }
+            clientState={
+              contentLocked
+                ? existingInvoice?.client_state || undefined
+                : selectedClient?.state || undefined
+            }
+            clientPincode={
+              contentLocked
+                ? existingInvoice?.client_pincode || undefined
+                : selectedClient?.pincode || undefined
+            }
+            clientGstin={
+              contentLocked
+                ? existingInvoice?.client_gstin || undefined
+                : selectedClient?.gstin || undefined
+            }
+            clientPan={
+              contentLocked
+                ? existingInvoice?.client_pan || undefined
+                : selectedClient?.pan || undefined
+            }
+            clientStateCode={
+              contentLocked
+                ? existingInvoice?.client_state_code || undefined
+                : selectedClient?.state_code || undefined
+            }
+            companyName={
+              contentLocked
+                ? existingInvoice?.company_name || undefined
+                : companySettings?.company_name || undefined
+            }
+            companyAddress={
+              contentLocked
+                ? existingInvoice?.company_address || undefined
+                : companySettings?.company_address || undefined
+            }
             companyGstin={
-              gstEnabled ? companySettings?.company_gstin || undefined : undefined
+              contentLocked
+                ? existingInvoice?.company_gstin || undefined
+                : gstEnabled
+                  ? companySettings?.company_gstin || undefined
+                  : undefined
             }
-            companyEmail={companySettings?.smtp_from_email || undefined}
-            companyPhone={companySettings?.company_phone || undefined}
-            companyWebsite={companySettings?.company_website || undefined}
-            companyTagline={companySettings?.company_tagline || undefined}
-            logoSrc={companySettings?.company_logo_url || '/brand/krws-mark.png'}
-            projectName={selectedProject?.name || undefined}
+            companyPan={
+              contentLocked
+                ? existingInvoice?.company_pan || undefined
+                : companySettings?.company_pan || undefined
+            }
+            companyEmail={
+              contentLocked
+                ? existingInvoice?.company_email || undefined
+                : companySettings?.smtp_from_email || undefined
+            }
+            companyPhone={
+              contentLocked
+                ? existingInvoice?.company_phone || undefined
+                : companySettings?.company_phone || undefined
+            }
+            companyWebsite={
+              contentLocked
+                ? existingInvoice?.company_website || undefined
+                : companySettings?.company_website || undefined
+            }
+            companyTagline={
+              contentLocked
+                ? existingInvoice?.company_tagline || undefined
+                : companySettings?.company_tagline || undefined
+            }
+            gstUnregistered={
+              contentLocked
+                ? !!existingInvoice?.gst_unregistered
+                : !!companySettings?.gst_unregistered
+            }
+            logoSrc={
+              contentLocked
+                ? existingInvoice?.company_logo_url || '/brand/krws-mark.png'
+                : companySettings?.company_logo_url || '/brand/krws-mark.png'
+            }
+            projectName={
+              contentLocked
+                ? existingInvoice?.project_name || selectedProject?.name || undefined
+                : selectedProject?.name || undefined
+            }
             projectRef={
-              projectId ? projectId.replace('prj_', 'PRJ-').toUpperCase() : undefined
+              contentLocked
+                ? existingInvoice?.project_ref || undefined
+                : projectId
+                  ? projectId.replace('prj_', 'PRJ-').toUpperCase()
+                  : undefined
             }
             coversFrom={isMaintenance ? coverageStart : undefined}
             coversTo={isMaintenance ? amcEnd : undefined}
             invoiceType={existingInvoice?.invoice_type || invoiceType}
+            gstEnabled={contentLocked ? existingInvoice?.gst_enabled : gstEnabled}
+            placeOfSupply={
+              contentLocked
+                ? existingInvoice?.place_of_supply || undefined
+                : selectedClient?.state || undefined
+            }
             items={previewItems}
-            subtotalPaise={subtotalPaise}
-            taxPaise={taxPaise}
-            taxRatePercent={taxRatePercent}
-            totalPaise={totalPaise}
+            subtotalPaise={
+              contentLocked ? existingInvoice?.subtotal_paise || subtotalPaise : subtotalPaise
+            }
+            taxPaise={contentLocked ? existingInvoice?.tax_paise || taxPaise : taxPaise}
+            taxRatePercent={
+              contentLocked
+                ? existingInvoice?.tax_rate_percent ?? taxRatePercent
+                : taxRatePercent
+            }
+            cgstPaise={previewCgst}
+            sgstPaise={previewSgst}
+            igstPaise={previewIgst}
+            discountPaise={existingInvoice?.discount_paise || 0}
+            totalPaise={contentLocked ? existingInvoice?.total_paise || totalPaise : totalPaise}
+            amountInWords={previewAmountWords}
             status={existingInvoice?.status || 'draft'}
             isPaid={existingInvoice?.status === 'paid'}
             notes={notes}
             terms={companySettings?.payment_terms || undefined}
-            bankDetails={{
-              beneficiaryName: companySettings?.bank_beneficiary_name,
-              bankName: companySettings?.bank_name,
-              accountNumber: companySettings?.bank_account_number,
-              ifsc: companySettings?.bank_ifsc,
-              upiId: companySettings?.bank_upi_id,
-              blob: companySettings?.bank_upi_details,
-            }}
-            upiQrSrc={companySettings?.bank_upi_qr_url || undefined}
+            resolvedTerms={
+              contentLocked ? existingInvoice?.resolved_terms || undefined : undefined
+            }
+            wireInstructions={previewWire}
+            bankDetails={previewBank}
+            upiQrSrc={previewQr}
           />
+          </InvoicePaperStage>
         </div>
       </div>
 
@@ -772,7 +1180,10 @@ export function InvoiceEditor({
         <div className="flex items-center gap-3">
           <span className="text-xs text-[#64748B] hidden sm:inline">Grand Total:</span>
           <span className="text-lg font-mono font-extrabold text-[#0F172A] tabular-nums">
-            ₹{(totalPaise / 100).toLocaleString('en-IN')}
+            ₹
+            {(
+              (contentLocked ? existingInvoice?.total_paise || totalPaise : totalPaise) / 100
+            ).toLocaleString('en-IN')}
           </span>
           {remainingPaise != null && (
             <span className="text-xs text-[#64748B] hidden md:inline">

@@ -23,7 +23,7 @@ export function ClientFormFields({ value, onChange }: ClientFormFieldsProps) {
           <Input required placeholder="Aster Retail Technologies" value={value.name} onChange={set('name')} />
         </FormField>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField label="Company email" hint="Invoices are sent here">
+          <FormField label="Company email" hint="Invoice To address">
             <Input type="email" placeholder="accounts@company.com" value={value.email} onChange={set('email')} />
           </FormField>
           <FormField label="Company phone">
@@ -36,6 +36,14 @@ export function ClientFormFields({ value, onChange }: ClientFormFieldsProps) {
           </FormField>
           <FormField label="GSTIN">
             <Input placeholder="33AAAAA0000A1Z5" value={value.gstin} onChange={set('gstin')} />
+          </FormField>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField label="PAN" hint="Optional — shown on tax invoices when set">
+            <Input placeholder="AAAAA0000A" value={value.pan} onChange={set('pan')} />
+          </FormField>
+          <FormField label="State code" hint="GST state code, e.g. 33 for Tamil Nadu">
+            <Input placeholder="33" value={value.state_code} onChange={set('state_code')} maxLength={2} />
           </FormField>
         </div>
         <FormField label="Address">
@@ -65,7 +73,7 @@ export function ClientFormFields({ value, onChange }: ClientFormFieldsProps) {
           </FormField>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField label="Contact email">
+          <FormField label="Contact email" hint="CC’d on invoice emails">
             <Input type="email" placeholder="priya@company.com" value={value.contact_email} onChange={set('contact_email')} />
           </FormField>
           <FormField label="Contact number">

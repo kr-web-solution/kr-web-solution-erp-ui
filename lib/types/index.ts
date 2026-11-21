@@ -54,6 +54,7 @@ export interface User {
 export interface Client {
   id: string;
   name: string;
+  is_active?: boolean;
   primary_contact_name?: string | null;
   designation?: string | null;
   contact_email?: string | null;
@@ -66,6 +67,8 @@ export interface Client {
   state?: string | null;
   pincode?: string | null;
   gstin?: string | null;
+  pan?: string | null;
+  state_code?: string | null;
   notes?: string | null;
   projects_count?: number;
   invoices_count?: number;
@@ -87,6 +90,8 @@ export interface ClientFormValues {
   state: string;
   pincode: string;
   gstin: string;
+  pan: string;
+  state_code: string;
   notes: string;
 }
 
@@ -104,6 +109,8 @@ export const emptyClientForm = (): ClientFormValues => ({
   state: '',
   pincode: '',
   gstin: '',
+  pan: '',
+  state_code: '',
   notes: '',
 });
 
@@ -161,6 +168,16 @@ export interface Project {
   balance_invoice_id?: string | null;
   go_live_at?: string | null;
   status: ProjectStatus;
+  status_reason?: string | null;
+  reopened_at?: string | null;
+  reopened_by?: string | null;
+  development_completed_at?: string | null;
+  development_completed_by?: string | null;
+  client_accepted_at?: string | null;
+  client_accepted_by?: string | null;
+  project_closed_at?: string | null;
+  project_closed_by?: string | null;
+  closed_reason?: string | null;
   delivery_phase?: number;
   delivery_phase_name?: string | null;
   engagement_id?: string | null;
@@ -187,17 +204,49 @@ export interface ProjectChecklistItem {
   done_by?: string | null;
 }
 
+export interface ProjectPhaseNote {
+  stage_number: number;
+  body?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
 export interface ProjectDeliveryDetail extends Project {
   checklist_items: ProjectChecklistItem[];
   checklist_progress_percent: number;
+  phase_notes?: ProjectPhaseNote[];
 }
 
 export type ProjectFeatureStatus =
-  | 'requested'
+  | 'submitted'
+  | 'under_review'
+  | 'estimation_pending'
+  | 'quotation_sent'
+  | 'awaiting_approval'
+  | 'revision_requested'
   | 'approved'
+  | 'in_development'
+  | 'testing'
+  | 'delivered'
+  | 'completed'
+  | 'rejected'
+  | 'cancelled'
+  // legacy aliases (pre-migration)
+  | 'requested'
   | 'in_progress'
-  | 'done'
-  | 'rejected';
+  | 'done';
+
+export type ProjectFeatureRequestType =
+  | 'new_feature'
+  | 'feature_enhancement'
+  | 'existing_feature_modification'
+  | 'third_party_integration'
+  | 'scope_extension'
+  | 'bug_fix'
+  | 'change_request'
+  | 'enhancement';
+
+export type ProjectFeaturePriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export type ProjectDocKind = 'quotation' | 'agreement' | 'other';
 
@@ -219,7 +268,10 @@ export interface ProjectFeatureDoc {
   feature_id: string;
   title: string;
   body_or_url: string;
-  doc_type: 'note' | 'link' | 'spec' | string;
+  doc_type: 'note' | 'link' | 'spec' | 'attachment' | string;
+  original_filename?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
   created_by?: string | null;
   created_at: string;
 }
@@ -227,10 +279,21 @@ export interface ProjectFeatureDoc {
 export interface ProjectFeature {
   id: string;
   project_id: string;
+  cr_number?: string | null;
   title: string;
   description?: string | null;
+  business_purpose?: string | null;
+  request_type?: ProjectFeatureRequestType | string;
+  expected_functionality?: string | null;
+  priority?: ProjectFeaturePriority | string;
+  expected_date?: string | null;
+  acceptance_criteria?: string | null;
   status: ProjectFeatureStatus | string;
   quoted_paise?: number | null;
+  is_billable?: boolean;
+  submitted_by?: string | null;
+  project_name?: string | null;
+  client_name?: string | null;
   created_at: string;
   updated_at: string;
   docs: ProjectFeatureDoc[];
@@ -249,6 +312,7 @@ export type InvoiceType =
   | 'maintenance'
   | 'late_fee'
   | 'credit_note'
+  | 'debit_note'
   | 'custom_dev'
   | 'amc'
   | 'advance'
@@ -265,6 +329,18 @@ export interface InvoiceItem {
   unit_rate_paise: number;
   amount_paise?: number;
   line_kind?: string | null;
+  hsn_sac?: string | null;
+  unit?: string | null;
+}
+
+export interface InvoicePayment {
+  id: string;
+  invoice_id: string;
+  amount_paise: number;
+  method?: string | null;
+  reference?: string | null;
+  paid_at?: string | null;
+  note?: string | null;
 }
 
 export interface Invoice {
@@ -283,6 +359,8 @@ export interface Invoice {
   client_state?: string | null;
   client_pincode?: string | null;
   client_gstin?: string | null;
+  client_pan?: string | null;
+  client_state_code?: string | null;
   project_id?: string | null;
   project_name?: string | null;
   project_ref?: string | null;
@@ -293,7 +371,20 @@ export interface Invoice {
   tax_rate_percent: number;
   tax_paise: number;
   total_paise: number;
+  place_of_supply?: string | null;
+  supply_type?: string | null;
+  cgst_paise?: number;
+  sgst_paise?: number;
+  igst_paise?: number;
+  discount_paise?: number;
+  round_off_paise?: number;
+  amount_paid_paise?: number;
+  balance_due_paise?: number;
+  po_number?: string | null;
+  amount_in_words?: string | null;
   notes?: string | null;
+  resolved_terms?: string[];
+  payments?: InvoicePayment[];
   upi_id_override?: string | null;
   upi_qr_url?: string | null;
   period_months?: number;
@@ -325,8 +416,19 @@ export interface Invoice {
   payment_bank_name?: string | null;
   payment_bank_account_number?: string | null;
   payment_bank_ifsc?: string | null;
+  payment_paypal_id?: string | null;
   payment_bank_upi_details?: string | null;
+  payment_bank_wire_instructions?: string | null;
+  payment_wire_lines?: string[];
   gst_enabled?: boolean;
+  /** null = follow Settings; true/false = per-invoice override */
+  gst_enabled_override?: boolean | null;
+  /** Unpaid + latest in series + no children — GST series switch allowed */
+  can_change_gst?: boolean;
+  /** Lowest free number if GST were toggled to the opposite series */
+  gst_toggle_preview_number?: string | null;
+  /** Unpaid + tip of number series — delete allowed */
+  can_delete?: boolean;
   company_name?: string | null;
   company_address?: string | null;
   company_gstin?: string | null;
@@ -335,7 +437,15 @@ export interface Invoice {
   company_website?: string | null;
   company_tagline?: string | null;
   company_logo_url?: string | null;
+  company_pan?: string | null;
+  company_state?: string | null;
+  company_state_code?: string | null;
+  gst_unregistered?: boolean;
+  default_sac_code?: string | null;
   payment_terms?: string | null;
+  /** True only when paid/cancelled/void — identity frozen at that time. */
+  document_locked?: boolean;
+  snapshot_frozen_at?: string | null;
 }
 
 export interface RecurringInvoice {
@@ -402,14 +512,50 @@ export interface Note {
   created_at: string;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  actor_id?: string | null;
+  actor_email?: string | null;
+  actor_name?: string | null;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  changed_fields: string[];
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  ip?: string | null;
+  created_at: string;
+}
+
+export interface GstRegistration {
+  id: string;
+  gstin: string;
+  legal_name?: string | null;
+  address?: string | null;
+  state?: string | null;
+  state_code: string;
+  effective_from: string;
+  effective_to?: string | null;
+  is_primary: boolean;
+  is_active: boolean;
+}
+
 export interface CompanySettings {
   company_name: string;
   company_address?: string | null;
   company_gstin?: string | null;
   company_logo_url?: string | null;
+  company_logo_content_hash?: string | null;
+  gst_registrations?: GstRegistration[];
   company_phone?: string | null;
   company_website?: string | null;
   company_tagline?: string | null;
+  company_pan?: string | null;
+  company_state?: string | null;
+  company_state_code?: string | null;
+  gst_unregistered?: boolean;
+  default_sac_code?: string | null;
+  invoice_terms_by_type?: Record<string, string[]>;
   invoice_prefix: string;
   invoice_next_number: number;
   invoice_sequences?: Record<string, number>;
@@ -418,6 +564,7 @@ export interface CompanySettings {
     code: string;
     prefix: string;
     example: string;
+    gst?: 'on' | 'off' | string;
   }>;
   default_tax_rate: number;
   gst_enabled?: boolean;
@@ -433,7 +580,9 @@ export interface CompanySettings {
   bank_account_number?: string | null;
   bank_ifsc?: string | null;
   bank_upi_id?: string | null;
+  bank_paypal_id?: string | null;
   bank_upi_details?: string | null;
+  bank_wire_instructions?: string | null;
   bank_upi_qr_url?: string | null;
   smtp_host?: string | null;
   smtp_port: number;
@@ -442,6 +591,8 @@ export interface CompanySettings {
   smtp_use_tls: boolean;
   smtp_from_name?: string | null;
   smtp_from_email?: string | null;
+  /** When false, scheduler/auto invoice emails are skipped (manual Send still works). */
+  smtp_auto_send_enabled?: boolean;
   invoice_cc_email?: string | null;
 }
 
@@ -588,6 +739,7 @@ export interface PipelineStageDef {
   name: string;
   client_label: string;
   client_message: string;
+  deliverable?: string;
 }
 
 /* ----------------- Staff / Worker management ----------------- */

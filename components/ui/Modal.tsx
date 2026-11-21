@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { XIcon } from '@/components/icons';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -85,7 +85,7 @@ export function Modal({
               aria-label="Close dialog"
               className="shrink-0 cursor-pointer rounded-lg p-2 text-[#64748B] transition-colors hover:bg-[#F6F7F9] hover:text-[#0F172A]"
             >
-              <X className="h-5 w-5" />
+              <XIcon size={20} />
             </button>
           </div>
         )}

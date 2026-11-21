@@ -3,8 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Search,
-  X,
   LayoutDashboard,
   FolderKanban,
   Receipt,
@@ -14,6 +12,7 @@ import {
   ArrowRight,
   Sparkles,
 } from 'lucide-react';
+import { SearchIcon, XIcon } from '@/components/icons';
 
 interface SearchCommandModalProps {
   isOpen: boolean;
@@ -140,7 +139,7 @@ export function SearchCommandModal({ isOpen, onClose }: SearchCommandModalProps)
       <div className="bg-white rounded-xl shadow-2xl border border-[#E7E9EF] w-full max-w-2xl overflow-hidden flex flex-col max-h-[75vh]">
         {/* INPUT HEADER */}
         <div className="p-3.5 border-b border-[#E7E9EF] flex items-center gap-3 bg-[#F8F9FB]">
-          <Search className="w-4 h-4 text-[#FD322E] shrink-0" />
+          <SearchIcon size={16} className="shrink-0 text-[#FD322E]" />
           <input
             type="text"
             autoFocus
@@ -157,8 +156,9 @@ export function SearchCommandModal({ isOpen, onClose }: SearchCommandModalProps)
             type="button"
             onClick={onClose}
             className="p-1 text-[#667085] hover:text-[#191919] rounded-md hover:bg-slate-200/50"
+            aria-label="Close search"
           >
-            <X className="w-4 h-4" />
+            <XIcon size={16} />
           </button>
         </div>
 

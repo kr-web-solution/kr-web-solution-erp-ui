@@ -3,13 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Menu,
-  Bell,
-  LogOut,
-  User as UserIcon,
-  ChevronDown,
-} from 'lucide-react';
+import { User as UserIcon, ChevronDown } from 'lucide-react';
+import { BellIcon, LogoutIcon, MenuIcon } from '@/components/icons';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { dashboardApi } from '@/lib/api/client';
@@ -63,7 +58,7 @@ export function TopBar({ onOpenMobileMenu }: TopBarProps) {
           className="relative z-50 -ml-1 inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] text-[#0F172A] hover:bg-[#F6F7F9] active:bg-[#EEF1F5] lg:hidden"
           aria-label="Open mobile navigation"
         >
-          <Menu className="h-5 w-5" />
+          <MenuIcon size={20} />
         </button>
 
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-[#64748B] truncate">
@@ -97,7 +92,7 @@ export function TopBar({ onOpenMobileMenu }: TopBarProps) {
             title={needsActionCount > 0 ? `${needsActionCount} overdue invoices need decision` : 'Notifications'}
             className="relative p-2 text-[#64748B] hover:text-[#0F172A] hover:bg-[#F6F7F9] rounded-[10px] transition-colors"
           >
-            <Bell className="w-4 h-4" />
+            <BellIcon size={16} />
             {needsActionCount > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#E32B2B] text-white text-[10px] font-bold font-mono flex items-center justify-center ring-2 ring-white">
                 {needsActionCount > 9 ? '9+' : needsActionCount}
@@ -168,7 +163,7 @@ export function TopBar({ onOpenMobileMenu }: TopBarProps) {
                   }}
                   className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-[#FDECEC] transition-colors cursor-pointer text-left border-t border-[#E6E8EE]"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogoutIcon size={16} />
                   <span>Sign Out</span>
                 </button>
               </div>

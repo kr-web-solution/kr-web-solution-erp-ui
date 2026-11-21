@@ -4,8 +4,16 @@ import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { projectsApi, invoicesApi, engagementsApi, clientsApi } from '@/lib/api/client';
-import { Project, Invoice, ProjectStatus, EngagementListItem, EngagementDetail, Client } from '@/lib/types';
+import { projectsApi, invoicesApi, engagementsApi, clientsApi, usersApi } from '@/lib/api/client';
+import {
+  Project,
+  Invoice,
+  ProjectStatus,
+  EngagementListItem,
+  EngagementDetail,
+  Client,
+  User,
+} from '@/lib/types';
 import { stageLabel } from '@/lib/workflow';
 import { isPrivileged } from '@/lib/roles';
 import {
@@ -20,17 +28,23 @@ import {
   Send,
   Pencil,
   X,
+  IndianRupee,
+  CalendarDays,
+  Users,
+  Building2,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Avatar } from '@/components/ui/Avatar';
-import { CopyButton } from '@/components/ui/CopyButton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
+import { Textarea } from '@/components/ui/Textarea';
+import { MultiSelect } from '@/components/ui/MultiSelect';
 import { Tabs } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageSkeleton } from '@/components/ui/Skeleton';
@@ -97,33 +111,33 @@ function DevelopmentTimeline({
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-        <label className="rounded-lg bg-[#F6F7F9] px-3 py-2 block">
-          <span className="text-[#64748B]">Start</span>
+        <label className="rounded-[10px] bg-bg border border-border px-3 py-2 block cursor-pointer">
+          <span className="text-muted">Start</span>
           {canEdit ? (
             <input
               type="date"
-              className="mt-1 block w-full bg-transparent text-sm font-semibold text-[#0F172A] focus:outline-none cursor-pointer"
+              className="mt-1 block w-full bg-transparent text-sm font-semibold text-text focus:outline-none cursor-pointer"
               value={startDate ? startDate.slice(0, 10) : ''}
               onChange={(e) => onStartChange(e.target.value)}
             />
           ) : (
-            <p className="font-semibold text-[#0F172A] mt-0.5">{formatIsoDate(startDate)}</p>
+            <p className="font-semibold text-text mt-0.5">{formatIsoDate(startDate)}</p>
           )}
         </label>
-        <div className="rounded-lg bg-[#F6F7F9] px-3 py-2">
-          <p className="text-[#64748B]">Deadline</p>
-          <p className="font-semibold text-[#0F172A] mt-0.5">{formatIsoDate(deadline)}</p>
-          {days > 0 && <p className="text-[11px] text-[#64748B] mt-0.5">{days} development days</p>}
+        <div className="rounded-[10px] bg-bg border border-border px-3 py-2">
+          <p className="text-muted">Deadline</p>
+          <p className="font-semibold text-text mt-0.5">{formatIsoDate(deadline)}</p>
+          {days > 0 && <p className="text-[11px] text-muted mt-0.5">{days} development days</p>}
         </div>
       </div>
       {startDate && days > 0 && (
         <div>
-          <div className="flex items-center justify-between text-[11px] text-[#64748B] mb-1">
+          <div className="flex items-center justify-between text-[11px] text-muted mb-1">
             <span>{label}</span>
             <span className="tabular-nums">{pct}%</span>
           </div>
-          <div className="h-1.5 w-full rounded-full bg-[#E6E8EE] overflow-hidden">
-            <div className="h-full bg-[#E32B2B] rounded-full" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+            <div className="h-full bg-brand-red-500 rounded-full" style={{ width: `${pct}%` }} />
           </div>
         </div>
       )}
@@ -145,14 +159,6 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   >(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(true);
-  const [editingTerms, setEditingTerms] = useState(false);
-  const [savingTerms, setSavingTerms] = useState(false);
-  const [termsForm, setTermsForm] = useState({
-    totalRupees: '',
-    advanceRupees: '',
-    devDays: '',
-    amcRupees: '',
-  });
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isTogglingMaintenance, setIsTogglingMaintenance] = useState(false);
   const [isGoingLive, setIsGoingLive] = useState(false);
@@ -178,6 +184,19 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [showAddClient, setShowAddClient] = useState(false);
   const [addClientId, setAddClientId] = useState('');
   const [clientActionBusy, setClientActionBusy] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editWorkers, setEditWorkers] = useState<User[]>([]);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    client_ids: [] as string[],
+    worker_ids: [] as string[],
+    development_days: '',
+    budget_rupees: '',
+    maintenance_rupees: '',
+  });
 
   const projectClients = project?.clients?.length
     ? project.clients
@@ -234,6 +253,95 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  const openEditProject = async () => {
+    if (!project) return;
+    const linkedIds = project.client_ids?.length
+      ? project.client_ids
+      : projectClients.map((c) => c.id);
+    const pipelineHint =
+      (linkedEngagement?.quoted_paise || linkedEngagement?.estimated_budget_paise || 0) / 100;
+    const usePipeline = !(project.budget_paise || 0) && pipelineHint > 0;
+    setEditForm({
+      name: project.name || '',
+      description: project.description || '',
+      client_ids: linkedIds,
+      worker_ids: (project.workers || []).map((w) => w.id),
+      development_days: project.development_days ? String(project.development_days) : '15',
+      budget_rupees: String(
+        usePipeline ? pipelineHint : (project.budget_paise || 0) / 100 || ''
+      ),
+      maintenance_rupees: String((project.maintenance_amount_paise || 0) / 100 || ''),
+    });
+    setEditError(null);
+    setIsEditOpen(true);
+    try {
+      const [cList, uList] = await Promise.all([clientsApi.list(), usersApi.list()]);
+      setAllClients(cList);
+      const assigned = new Set((project.workers || []).map((w) => w.id));
+      const workers = uList.filter(
+        (u) => (u.role === 'worker' && u.is_active) || assigned.has(u.id)
+      );
+      for (const w of project.workers || []) {
+        if (!workers.some((x) => x.id === w.id)) workers.push(w);
+      }
+      setEditWorkers(workers);
+    } catch {
+      toast.error('Failed to load clients or team members');
+    }
+  };
+
+  const handleSaveProjectDetails = async () => {
+    if (!editForm.name.trim()) {
+      setEditError('Project name is required.');
+      return;
+    }
+    if (!editForm.client_ids.length) {
+      setEditError('Select at least one client.');
+      return;
+    }
+    const daysRaw = editForm.development_days.trim();
+    let development_days: number | undefined;
+    if (daysRaw) {
+      const parsed = parseInt(daysRaw, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        setEditError('Duration must be at least 1 day.');
+        return;
+      }
+      development_days = parsed;
+    }
+    const budget = Math.round(parseFloat(editForm.budget_rupees || '0') * 100);
+    const amc = Math.round(parseFloat(editForm.maintenance_rupees || '0') * 100);
+    if (editForm.budget_rupees.trim() && (!Number.isFinite(budget) || budget < 0)) {
+      setEditError('Enter a valid total development amount.');
+      return;
+    }
+    if (editForm.maintenance_rupees.trim() && (!Number.isFinite(amc) || amc < 0)) {
+      setEditError('Enter a valid monthly maintenance amount.');
+      return;
+    }
+    setEditError(null);
+    setIsSavingEdit(true);
+    try {
+      const updated = await projectsApi.update(projectId, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim() || null,
+        client_ids: editForm.client_ids,
+        worker_ids: editForm.worker_ids,
+        ...(development_days != null ? { development_days } : {}),
+        ...(editForm.budget_rupees.trim() ? { budget_paise: budget } : {}),
+        maintenance_amount_paise: Number.isFinite(amc) && amc > 0 ? amc : 0,
+      });
+      setProject(updated);
+      setIsEditOpen(false);
+      toast.success('Project details updated');
+      await fetchProjectData();
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to update project.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const handleAddClient = async () => {
     if (!addClientId) {
       toast.error('Select a client to add');
@@ -271,6 +379,30 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const handleStatusSelect = (newStatus: ProjectStatus) => {
+    if (!isPrivileged(user?.role) && user?.role === 'worker') {
+      if (newStatus !== 'running' && newStatus !== 'on_hold') {
+        toast.error('Workers can only set Running or On Hold');
+        return;
+      }
+    } else if (!isPrivileged(user?.role)) {
+      toast.error('You cannot change project status');
+      return;
+    }
+
+    if (
+      project &&
+      (project.status === 'stopped' || project.status === 'completed') &&
+      newStatus === 'running'
+    ) {
+      const reason = window.prompt('Reopen reason (required):');
+      if (!reason?.trim()) {
+        toast.error('A reopen reason is required');
+        return;
+      }
+      applyStatusChange(newStatus, false, { reopen_reason: reason.trim() });
+      return;
+    }
+
     if (newStatus === 'stopped' && project?.maintenance_status === 'active') {
       setPendingStatusChange(newStatus);
       setShowPausePrompt(true);
@@ -279,13 +411,21 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
-  const applyStatusChange = async (newStatus: ProjectStatus, alsoPauseMaintenance: boolean = false) => {
+  const applyStatusChange = async (
+    newStatus: ProjectStatus,
+    alsoPauseMaintenance: boolean = false,
+    extra?: { reopen_reason?: string; status_reason?: string }
+  ) => {
     setIsUpdatingStatus(true);
     try {
       if (alsoPauseMaintenance && project?.maintenance_status === 'active') {
         await projectsApi.toggleMaintenance(projectId);
       }
-      const updated = await projectsApi.update(projectId, { status: newStatus });
+      const updated = await projectsApi.update(projectId, {
+        status: newStatus,
+        ...(extra?.reopen_reason ? { reopen_reason: extra.reopen_reason } : {}),
+        ...(extra?.status_reason ? { status_reason: extra.status_reason } : {}),
+      });
       setProject(updated);
       toast.success(`Project status updated to ${newStatus.replace('_', ' ')}`);
     } catch (err: any) {
@@ -337,62 +477,6 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       toast.error(err?.message || 'Go Live failed');
     } finally {
       setIsGoingLive(false);
-    }
-  };
-
-  const pipelineTotalHint =
-    (linkedEngagement?.quoted_paise || linkedEngagement?.estimated_budget_paise || 0) / 100;
-  const startEditTerms = (prefillFromPipeline = false) => {
-    if (!project) return;
-    const usePipeline = prefillFromPipeline || !(project.budget_paise || 0);
-
-    setTermsForm({
-      totalRupees: String(
-        usePipeline && pipelineTotalHint > 0
-          ? pipelineTotalHint
-          : (project.budget_paise || 0) / 100
-      ),
-      advanceRupees: '0',
-      devDays: project.development_days ? String(project.development_days) : '15',
-      amcRupees: String((project.maintenance_amount_paise || 0) / 100),
-    });
-    setEditingTerms(true);
-  };
-
-  const handleSaveTerms = async () => {
-    const budget = Math.round(parseFloat(termsForm.totalRupees || '0') * 100);
-    const amc = Math.round(parseFloat(termsForm.amcRupees || '0') * 100);
-    const days = parseInt(termsForm.devDays, 10);
-
-    if (!Number.isFinite(budget) || budget <= 0) {
-      toast.error('Enter total development amount');
-      return;
-    }
-    if (!Number.isFinite(days) || days <= 0) {
-      toast.error('Enter development days');
-      return;
-    }
-
-    setSavingTerms(true);
-    try {
-      const updated = await projectsApi.update(projectId, {
-        budget_paise: budget,
-        development_days: days,
-        maintenance_amount_paise: Number.isFinite(amc) && amc > 0 ? amc : 0,
-      });
-      setProject(updated);
-      setEditingTerms(false);
-      toast.success('Development cost updated');
-      await fetchProjectData();
-    } catch (err: any) {
-      const msg = err?.message || 'Failed to save commercial terms';
-      toast.error(
-        msg === 'Failed to fetch'
-          ? 'API unreachable — is the backend running on :8000?'
-          : msg
-      );
-    } finally {
-      setSavingTerms(false);
     }
   };
 
@@ -605,6 +689,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   const isFounder = isPrivileged(user?.role);
   const isMaintenanceActive = project.maintenance_status === 'active';
+  const deliveryMode =
+    user?.role === 'client' ? 'client' : user?.role === 'worker' ? 'worker' : 'founder';
+  const deliveryPhaseLabel = stageLabel(
+    project.delivery_phase || linkedEngagement?.current_stage || 5,
+    deliveryMode
+  );
 
   // Budget calculations (ex-GST project invoices from API when available)
   const totalBudgetPaise = project.budget_paise || 0;
@@ -615,151 +705,195 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       .reduce((sum, inv) => sum + (inv.subtotal_paise || 0), 0);
   const remainingPaise =
     project.remaining_paise ?? Math.max(totalBudgetPaise - totalInvoicedPaise, 0);
+  const agreedTotal = money?.development?.agreed_total ?? totalBudgetPaise;
+  const balanceLeft = money?.development?.remaining_to_invoice ?? remainingPaise;
 
   return (
-    <div className="w-full min-w-0 space-y-6 pb-12">
+    <div className="w-full min-w-0 space-y-5 pb-12">
       {/* ========================================================= */}
-      {/* BREADCRUMB & HEADER */}
+      {/* HERO */}
       {/* ========================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-[#64748B] mb-1">
-            <Link href="/projects" className="hover:text-[#0F172A] transition-colors">
+      <div className="relative overflow-hidden rounded-[16px] border border-border bg-surface">
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-brand-red-tint blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-16 left-1/4 h-40 w-40 rounded-full bg-brand-yellow-tint blur-3xl"
+          aria-hidden
+        />
+
+        <div className="relative px-5 py-5 sm:px-6 space-y-4">
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-muted">
+            <Link href="/projects" className="hover:text-brand-red-500 transition-colors">
               Projects
             </Link>
-            <span>/</span>
-            <span className="text-[#0F172A] font-semibold truncate max-w-xs">{project.name}</span>
+            <span className="text-subtle">/</span>
+            <span className="text-text truncate max-w-[14rem] sm:max-w-xs">{project.name}</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-[28px] font-bold text-[#0F172A] tracking-[-0.02em] font-heading">
-              {project.name}
-            </h1>
-            <StatusBadge status={project.status} type="project" />
-            {isMaintenanceActive && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#E8F0FE] text-[#2563EB] border border-blue-200 flex items-center gap-1">
-                <Zap className="w-3 h-3" />
-                <span>Monthly Maintenance</span>
-              </span>
-            )}
-            {(project.delivery_phase != null || linkedEngagement) && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#E8F0FE] text-[#2563EB] border border-blue-200">
-                Delivery ·{' '}
-                {stageLabel(
-                  project.delivery_phase || linkedEngagement?.current_stage || 5,
-                  user?.role === 'client' ? 'client' : user?.role === 'worker' ? 'worker' : 'founder'
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl sm:text-[28px] font-bold tracking-[-0.02em] font-heading text-text">
+                  {project.name}
+                </h1>
+                <StatusBadge status={project.status} type="project" />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {isMaintenanceActive && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-info-tint text-info border border-info/20">
+                    <Zap className="w-3 h-3" />
+                    Monthly maintenance
+                  </span>
                 )}
-              </span>
-            )}
-            {linkedEngagement?.amc_active && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FEF6D8] text-[#5B4300] border border-[#FADC59]/40">
-                AMC
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-[#64748B] mt-1 flex items-center gap-1.5 flex-wrap">
-            <span>{projectClients.length > 1 ? 'Clients:' : 'Client:'}</span>
-            {projectClients.map((c, i) => (
-              <span key={c.id} className="inline-flex items-center gap-1">
-                {i > 0 && <span className="text-[#94A3B8]">·</span>}
-                <Link
-                  href={`/clients/${c.id}`}
-                  className="font-semibold text-[#0F172A] hover:text-[#E32B2B] hover:underline"
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-bg text-text border border-border">
+                  Delivery · {deliveryPhaseLabel}
+                </span>
+                {linkedEngagement?.amc_active && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-brand-yellow-tint text-brand-text-on-yellow border border-brand-yellow-400/40">
+                    AMC
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-subtle" />
+                  {projectClients.length > 1 ? 'Clients' : 'Client'}
+                </span>
+                {projectClients.map((c, i) => (
+                  <span key={c.id} className="inline-flex items-center gap-1">
+                    {i > 0 && <span className="text-subtle">·</span>}
+                    <Link
+                      href={`/clients/${c.id}`}
+                      className="font-semibold text-text hover:text-brand-red-500 transition-colors"
+                    >
+                      {c.name}
+                    </Link>
+                    {c.is_primary && projectClients.length > 1 && (
+                      <span className="text-[10px] text-muted">(primary)</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 bg-bg border border-border px-3 py-1.5 rounded-[10px]">
+                <span className="text-[11px] font-semibold text-muted">Status</span>
+                <select
+                  value={project.status}
+                  disabled={
+                    isUpdatingStatus ||
+                    (user?.role !== 'worker' && !isFounder)
+                  }
+                  onChange={(e) => handleStatusSelect(e.target.value as ProjectStatus)}
+                  className="text-xs font-bold text-text bg-transparent focus:outline-none cursor-pointer disabled:opacity-60"
                 >
-                  {c.name}
-                </Link>
-                {c.is_primary && projectClients.length > 1 && (
-                  <span className="text-[10px] font-semibold text-[#64748B]">(primary)</span>
-                )}
-              </span>
-            ))}
-          </p>
-        </div>
+                  {isFounder ? (
+                    <>
+                      <option value="lead">Not started</option>
+                      <option value="running">Running</option>
+                      <option value="on_hold">On Hold</option>
+                      <option value="stopped">Stopped</option>
+                      <option value="completed">Completed</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="running">Running</option>
+                      <option value="on_hold">On Hold</option>
+                      {(project.status === 'lead' ||
+                        project.status === 'stopped' ||
+                        project.status === 'completed') && (
+                        <option value={project.status} disabled>
+                          {project.status.replace('_', ' ')}
+                        </option>
+                      )}
+                    </>
+                  )}
+                </select>
+              </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          {/* Status Quick Select */}
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-[10px] border border-[#E6E8EE]">
-            <span className="text-xs font-semibold text-[#64748B]">Status:</span>
-            <select
-              value={project.status}
-              disabled={isUpdatingStatus}
-              onChange={(e) => handleStatusSelect(e.target.value as ProjectStatus)}
-              className="text-xs font-bold text-[#0F172A] bg-transparent focus:outline-none cursor-pointer"
-            >
-              <option value="lead">Not started</option>
-              <option value="running">Running</option>
-              <option value="on_hold">On Hold</option>
-              <option value="stopped">Stopped</option>
-              <option value="completed">Completed</option>
-            </select>
+              {isFounder && project.status === 'lead' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="h-9"
+                  isLoading={isUpdatingStatus}
+                  onClick={async () => {
+                    try {
+                      setIsUpdatingStatus(true);
+                      const updated = await projectsApi.start(projectId);
+                      setProject(updated);
+                      const deadline = updated.end_date
+                        ? new Date(updated.end_date).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : '';
+                      toast.success(
+                        deadline
+                          ? `Started. Deadline is ${deadline} (${updated.development_days} days).`
+                          : 'Project started.'
+                      );
+                    } catch (err: any) {
+                      toast.error(err?.message || 'Could not start the project');
+                    } finally {
+                      setIsUpdatingStatus(false);
+                    }
+                  }}
+                >
+                  <Play className="w-4 h-4 mr-1" />
+                  Start project
+                </Button>
+              )}
+              {isFounder && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={openEditProject}
+                    className="h-9"
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                    Edit details
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setShowDeletePrompt(true)}
+                    className="h-9 px-3"
+                    title="Delete Project"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
-
-          {isFounder && project.status === 'lead' && (
-            <Button
-              variant="primary"
-              size="sm"
-              className="h-9"
-              isLoading={isUpdatingStatus}
-              onClick={async () => {
-                try {
-                  setIsUpdatingStatus(true);
-                  const updated = await projectsApi.start(projectId);
-                  setProject(updated);
-                  const deadline = updated.end_date
-                    ? new Date(updated.end_date).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })
-                    : '';
-                  toast.success(
-                    deadline
-                      ? `Started. Deadline is ${deadline} (${updated.development_days} days).`
-                      : 'Project started.'
-                  );
-                } catch (err: any) {
-                  toast.error(err?.message || 'Could not start the project');
-                } finally {
-                  setIsUpdatingStatus(false);
-                }
-              }}
-            >
-              <Play className="w-4 h-4 mr-1" />
-              Start project
-            </Button>
-          )}
-          {isFounder && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setShowDeletePrompt(true)}
-              className="h-9 px-3"
-              title="Delete Project"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          )}
         </div>
       </div>
 
       {/* ========================================================= */}
       {/* TABS */}
       {/* ========================================================= */}
-      <div className="border-b border-[#E6E8EE] pb-2">
-        <Tabs
-          tabs={[
-            { id: 'overview', label: 'Overview & Sprints' },
-            { id: 'delivery', label: 'Delivery' },
-            { id: 'features', label: 'Features' },
-            { id: 'docs', label: 'Docs' },
-            ...(user?.role !== 'worker'
-              ? [{ id: 'invoices', label: 'Invoices & Billing', count: invoices.length }]
-              : []),
-          ]}
-          activeTab={activeTab}
-          onChange={setActiveTab}
-        />
-      </div>
+      <Tabs
+        className="px-0.5"
+        tabs={[
+          { id: 'overview', label: 'Overview' },
+          { id: 'delivery', label: 'Delivery' },
+          { id: 'features', label: 'Features' },
+          { id: 'docs', label: 'Docs' },
+          ...(user?.role !== 'worker'
+            ? [{ id: 'invoices', label: 'Invoices', count: invoices.length }]
+            : []),
+        ]}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+      />
 
       {activeTab === 'delivery' && (
         <ProjectDeliveryPanel
@@ -772,13 +906,24 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {activeTab === 'features' && (
-        <ProjectFeaturesPanel projectId={projectId} role={user?.role} />
+        <ProjectFeaturesPanel
+          projectId={projectId}
+          role={user?.role}
+          projectName={project.name}
+          clientName={project.client_name || projectClients[0]?.name}
+        />
       )}
 
       {activeTab === 'docs' && (
         <div className="space-y-4">
           <ProjectFilesPanel projectId={projectId} role={user?.role} />
-          <ProjectFeaturesPanel projectId={projectId} role={user?.role} docsMode />
+          <ProjectFeaturesPanel
+            projectId={projectId}
+            role={user?.role}
+            projectName={project.name}
+            clientName={project.client_name || projectClients[0]?.name}
+            docsMode
+          />
         </div>
       )}
 
@@ -786,306 +931,448 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       {/* TAB 1: OVERVIEW */}
       {/* ========================================================= */}
       {activeTab === 'overview' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {user?.role !== 'worker' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
-              {[
-                ['Total development', `₹${((money?.development?.agreed_total ?? totalBudgetPaise) / 100).toLocaleString('en-IN')}`],
-                ['Balance', `₹${((money?.development?.remaining_to_invoice ?? remainingPaise) / 100).toLocaleString('en-IN')}`],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-[#E6E8EE] bg-white px-3 py-2.5">
-                  <p className="text-[11px] font-semibold text-[#64748B]">{label}</p>
-                  <p className="text-base sm:text-lg font-bold tabular-nums text-[#0F172A] mt-0.5">{value}</p>
-                </div>
-              ))}
+            <div className="rounded-[16px] border border-border bg-surface overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+                {[
+                  {
+                    label: 'Total development',
+                    value: `₹${(agreedTotal / 100).toLocaleString('en-IN')}`,
+                    caption: 'Agreed project amount',
+                    icon: <IndianRupee className="w-4 h-4" />,
+                    tone: 'bg-brand-red-tint text-brand-red-500',
+                  },
+                  {
+                    label: 'Balance to invoice',
+                    value: `₹${(balanceLeft / 100).toLocaleString('en-IN')}`,
+                    caption:
+                      balanceLeft > 0 ? 'Still to invoice' : 'Fully invoiced',
+                    icon: <FileText className="w-4 h-4" />,
+                    tone:
+                      balanceLeft > 0
+                        ? 'bg-danger-tint text-danger'
+                        : 'bg-success-tint text-success',
+                  },
+                  {
+                    label: 'Delivery phase',
+                    value: deliveryPhaseLabel,
+                    caption: project.development_days
+                      ? `${project.development_days} development days`
+                      : 'Timeline not set',
+                    icon: <CalendarDays className="w-4 h-4" />,
+                    tone: 'bg-brand-yellow-tint text-brand-text-on-yellow',
+                    valueClass: 'text-lg sm:text-xl',
+                  },
+                  {
+                    label: 'Maintenance',
+                    value:
+                      project.maintenance_status === 'none'
+                        ? 'None'
+                        : `₹${((project.maintenance_amount_paise || 0) / 100).toLocaleString('en-IN')}`,
+                    caption: project.go_live_at
+                      ? `Live since ${formatIsoDate(project.go_live_at)}`
+                      : isMaintenanceActive
+                        ? 'Billing active'
+                        : 'Not live yet',
+                    icon: <Zap className="w-4 h-4" />,
+                    tone: 'bg-info-tint text-info',
+                  },
+                ].map((m) => (
+                  <div key={m.label} className="px-5 py-4 flex gap-3 items-start">
+                    <div
+                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] ${m.tone}`}
+                      aria-hidden
+                    >
+                      {m.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                        {m.label}
+                      </p>
+                      <p
+                        className={`mt-1 font-bold text-text tabular-nums tracking-tight leading-snug truncate ${
+                          m.valueClass || 'text-xl sm:text-2xl font-mono'
+                        }`}
+                        title={String(m.value)}
+                      >
+                        {m.value}
+                      </p>
+                      <p className="mt-1 text-[11px] text-subtle truncate">{m.caption}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <div className="xl:col-span-5 space-y-4">
-            <section className="rounded-xl border border-[#E6E8EE] bg-white p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-[#0F172A]">Work</h2>
-              </div>
-              <p className="text-sm text-[#0F172A] whitespace-pre-wrap leading-relaxed">
-                {project.description || 'No scope written yet.'}
-              </p>
-              <DevelopmentTimeline
-                startDate={project.start_date}
-                developmentDays={project.development_days}
-                storedEnd={project.end_date}
-                canEdit={isFounder}
-                onStartChange={async (value) => {
-                  try {
-                    const updated = await projectsApi.update(projectId, {
-                      start_date: value || null,
-                    });
-                    setProject(updated);
-                    toast.success(value ? 'Development timeline updated' : 'Start date cleared');
-                  } catch (err: any) {
-                    toast.error(err?.message || 'Could not update the start date');
-                  }
-                }}
-              />
-              <div className="border-t border-[#E6E8EE] pt-3">
-                <p className="text-[11px] font-semibold text-[#64748B] mb-2">Team</p>
-                {(project.workers || []).length > 0 ? (
-                  <ul className="space-y-2">
-                    {(project.workers || []).map((worker) => (
-                      <li key={worker.id} className="flex items-center gap-2 text-sm">
-                        <Avatar name={worker.full_name} size="sm" />
-                        <span className="font-semibold text-[#0F172A]">{worker.full_name}</span>
-                        <span className="text-xs text-[#64748B] truncate">{worker.email}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-[#64748B]">No one assigned.</p>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-xl border border-[#E6E8EE] bg-white p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold text-[#64748B]">
-                  Clients{projectClients.length > 1 ? ` (${projectClients.length})` : ''}
-                </p>
-                {isFounder && (
-                  <button
-                    type="button"
-                    onClick={openAddClient}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#E32B2B] hover:text-[#C81F26]"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add
-                  </button>
-                )}
-              </div>
-              <ul className="space-y-2">
-                {projectClients.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Avatar name={c.name} size="sm" />
-                      <div className="min-w-0">
-                        <Link
-                          href={`/clients/${c.id}`}
-                          className="text-sm font-bold text-[#0F172A] hover:text-[#E32B2B] truncate block"
-                        >
-                          {c.name}
-                        </Link>
-                        {c.is_primary && (
-                          <span className="text-[10px] text-[#64748B]">Primary</span>
-                        )}
-                      </div>
-                    </div>
-                    {isFounder && (
-                      <button
-                        type="button"
-                        disabled={clientActionBusy || projectClients.length <= 1}
-                        title={
-                          projectClients.length <= 1
-                            ? 'A project must keep at least one client'
-                            : `Remove ${c.name}`
-                        }
-                        onClick={() => handleRemoveClient(c.id, c.name)}
-                        className="p-1 rounded-md text-[#94A3B8] hover:text-[#B91C1C] hover:bg-[#FFF1F0] disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
-
-          <div className="xl:col-span-7 space-y-4">
-            {/* Confirmed commercial terms — visible to founder + client */}
-            {user?.role !== 'worker' && (
-            <SectionCard
-              title="Confirmed commercial terms"
-              subtitle="Final project amounts"
-              icon={<Zap className="w-4 h-4" />}
-              headerSlot={
-                isFounder && !editingTerms ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 text-xs"
-                    onClick={() => startEditTerms(false)}
-                  >
-                    <Pencil className="w-3.5 h-3.5 mr-1" aria-hidden />
-                    Edit
-                  </Button>
-                ) : undefined
-              }
-            >
-              <div className="space-y-3">
-                {editingTerms && isFounder ? (
-                  <div className="space-y-3">
-                    {pipelineTotalHint > 0 && (
-                      <button
-                        type="button"
-                        className="text-[11px] font-semibold text-[#1D4ED8] hover:underline"
-                        onClick={() => startEditTerms(true)}
-                      >
-                        Prefill from estimate
-                      </button>
-                    )}
-                    <div className="grid grid-cols-2 gap-2">
-                      <FormField label="Development days">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={termsForm.devDays}
-                          onChange={(e) => setTermsForm((f) => ({ ...f, devDays: e.target.value }))}
-                        />
-                      </FormField>
-                      <FormField label="Total development (₹)">
-                        <Input
-                          type="number"
-                          min={0}
-                          step="100"
-                          value={termsForm.totalRupees}
-                          onChange={(e) =>
-                            setTermsForm((f) => ({ ...f, totalRupees: e.target.value }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="Monthly maintenance (₹)">
-                        <Input
-                          type="number"
-                          min={0}
-                          step="100"
-                          value={termsForm.amcRupees}
-                          onChange={(e) => setTermsForm((f) => ({ ...f, amcRupees: e.target.value }))}
-                        />
-                      </FormField>
-                    </div>
-                    <p className="text-[11px] text-muted">
-                      Invoices are created separately. Enter the amount, type, and description on the invoice.
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+            <div className="xl:col-span-5 space-y-5">
+              <SectionCard
+                title="Work & scope"
+                subtitle="Description, timeline, and team"
+                icon={<Users className="w-4 h-4" />}
+                headerSlot={
+                  isFounder ? (
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={openEditProject}>
+                      <Pencil className="w-3.5 h-3.5 mr-1" />
+                      Edit
+                    </Button>
+                  ) : undefined
+                }
+              >
+                <div className="space-y-4">
+                  <p className="text-sm text-text whitespace-pre-wrap leading-relaxed">
+                    {project.description || 'No scope written yet.'}
+                  </p>
+                  <DevelopmentTimeline
+                    startDate={project.start_date}
+                    developmentDays={project.development_days}
+                    storedEnd={project.end_date}
+                    canEdit={isFounder}
+                    onStartChange={async (value) => {
+                      try {
+                        const updated = await projectsApi.update(projectId, {
+                          start_date: value || null,
+                        });
+                        setProject(updated);
+                        toast.success(value ? 'Development timeline updated' : 'Start date cleared');
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Could not update the start date');
+                      }
+                    }}
+                  />
+                  <div className="border-t border-border pt-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted mb-2">
+                      Team
                     </p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        className="text-xs"
-                        isLoading={savingTerms}
-                        onClick={handleSaveTerms}
-                      >
-                        Save terms
-                      </Button>
+                    {(project.workers || []).length > 0 ? (
+                      <ul className="space-y-2">
+                        {(project.workers || []).map((worker) => (
+                          <li key={worker.id} className="flex items-center gap-2 text-sm">
+                            <Avatar name={worker.full_name} size="sm" />
+                            <span className="font-semibold text-text">{worker.full_name}</span>
+                            <span className="text-xs text-muted truncate">{worker.email}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-muted">No one assigned.</p>
+                    )}
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard
+                title="Clients"
+                subtitle={
+                  projectClients.length > 1
+                    ? `${projectClients.length} linked accounts`
+                    : 'Billing and project parties'
+                }
+                icon={<Building2 className="w-4 h-4" />}
+                headerSlot={
+                  isFounder ? (
+                    <button
+                      type="button"
+                      onClick={openAddClient}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-brand-red-500 hover:text-brand-red-hover cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add
+                    </button>
+                  ) : undefined
+                }
+              >
+                <ul className="space-y-2">
+                  {projectClients.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-center justify-between gap-2 rounded-[10px] border border-border bg-bg px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Avatar name={c.name} size="sm" />
+                        <div className="min-w-0">
+                          <Link
+                            href={`/clients/${c.id}`}
+                            className="text-sm font-bold text-text hover:text-brand-red-500 truncate block"
+                          >
+                            {c.name}
+                          </Link>
+                          {c.is_primary && (
+                            <span className="text-[10px] text-muted">Primary billing</span>
+                          )}
+                        </div>
+                      </div>
+                      {isFounder && (
+                        <button
+                          type="button"
+                          disabled={clientActionBusy || projectClients.length <= 1}
+                          title={
+                            projectClients.length <= 1
+                              ? 'A project must keep at least one client'
+                              : `Remove ${c.name}`
+                          }
+                          onClick={() => handleRemoveClient(c.id, c.name)}
+                          className="p-1 rounded-md text-subtle hover:text-danger hover:bg-danger-tint disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </SectionCard>
+            </div>
+
+            <div className="xl:col-span-7 space-y-5">
+              {isFounder && (
+                <SectionCard
+                  title="Project milestones"
+                  subtitle="Separate from status — development, acceptance, close"
+                  icon={<Check className="w-4 h-4" />}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-[12px] border border-border bg-bg px-3 py-3">
+                      <p className="text-[11px] font-semibold text-muted">Development completed</p>
+                      <p className="text-sm font-bold text-text mt-1">
+                        {project.development_completed_at
+                          ? formatIsoDate(project.development_completed_at)
+                          : 'Not set'}
+                      </p>
+                      {!project.development_completed_at && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-2 h-8 text-xs"
+                          onClick={async () => {
+                            try {
+                              const updated = await projectsApi.markDevelopmentCompleted(projectId);
+                              setProject(updated);
+                              toast.success('Development marked complete');
+                            } catch (err: any) {
+                              toast.error(err?.message || 'Failed');
+                            }
+                          }}
+                        >
+                          Mark complete
+                        </Button>
+                      )}
+                    </div>
+                    <div className="rounded-[12px] border border-border bg-bg px-3 py-3">
+                      <p className="text-[11px] font-semibold text-muted">Client accepted</p>
+                      <p className="text-sm font-bold text-text mt-1">
+                        {project.client_accepted_at
+                          ? formatIsoDate(project.client_accepted_at)
+                          : 'Not set'}
+                      </p>
+                      {!project.client_accepted_at && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-2 h-8 text-xs"
+                          onClick={async () => {
+                            try {
+                              const updated = await projectsApi.markClientAccepted(projectId);
+                              setProject(updated);
+                              toast.success('Client acceptance recorded');
+                            } catch (err: any) {
+                              toast.error(err?.message || 'Failed');
+                            }
+                          }}
+                        >
+                          Record acceptance
+                        </Button>
+                      )}
+                    </div>
+                    <div className="rounded-[12px] border border-border bg-bg px-3 py-3">
+                      <p className="text-[11px] font-semibold text-muted">Project closed</p>
+                      <p className="text-sm font-bold text-text mt-1">
+                        {project.project_closed_at
+                          ? formatIsoDate(project.project_closed_at)
+                          : 'Not set'}
+                      </p>
+                      {!project.project_closed_at && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-2 h-8 text-xs"
+                          onClick={async () => {
+                            const reason = window.prompt('Close reason (optional):') || undefined;
+                            try {
+                              const updated = await projectsApi.markProjectClosed(projectId, reason);
+                              setProject(updated);
+                              toast.success('Project closed');
+                            } catch (err: any) {
+                              toast.error(err?.message || 'Failed');
+                            }
+                          }}
+                        >
+                          Close project
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </SectionCard>
+              )}
+
+              {user?.role !== 'worker' && (
+                <SectionCard
+                  title="Confirmed commercial terms"
+                  subtitle="Final project amounts"
+                  icon={<Zap className="w-4 h-4" />}
+                  headerSlot={
+                    isFounder ? (
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-xs"
-                        disabled={savingTerms}
-                        onClick={() => setEditingTerms(false)}
+                        className="h-8 text-xs"
+                        onClick={openEditProject}
                       >
-                        Cancel
+                        <Pencil className="w-3.5 h-3.5 mr-1" aria-hidden />
+                        Edit
                       </Button>
+                    ) : undefined
+                  }
+                >
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="rounded-[12px] bg-bg border border-border px-3 py-3">
+                        <p className="text-[11px] font-semibold text-muted">Development days</p>
+                        <p className="text-lg font-bold text-text mt-1 tabular-nums">
+                          {project.development_days || '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-[12px] bg-bg border border-border px-3 py-3">
+                        <p className="text-[11px] font-semibold text-muted">Total development</p>
+                        <p className="text-lg font-bold text-text mt-1 tabular-nums">
+                          ₹{((project.budget_paise || 0) / 100).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div className="rounded-[12px] bg-bg border border-border px-3 py-3">
+                        <p className="text-[11px] font-semibold text-muted">Monthly maintenance</p>
+                        <p className="text-lg font-bold text-text mt-1 tabular-nums">
+                          ₹{((project.maintenance_amount_paise || 0) / 100).toLocaleString('en-IN')}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-
-                {isFounder && (
-                  <div className="border-t border-border pt-3">
-                    <Link href={`/invoices/new?project_id=${project.id}&client_id=${project.client_id}`}>
-                      <Button size="sm" variant="primary" className="text-xs">
-                        <Plus className="w-3.5 h-3.5 mr-1" aria-hidden />
-                        Create invoice
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-
-                <div className="border-t border-border pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-text">Go Live & AMC</p>
-                      <p className="text-[11px] text-muted">
-                        {project.go_live_at
-                          ? `Live since ${project.go_live_at}`
-                          : 'Emails prorata for remaining days (incl. go-live day)'}
-                      </p>
-                    </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        project.go_live_at
-                          ? 'bg-success-tint text-success'
-                          : isMaintenanceActive
-                          ? 'bg-[#FEF6D8] text-[#5B4300]'
-                          : 'bg-neutral text-muted'
-                      }`}
-                    >
-                      {project.go_live_at ? 'Live' : isMaintenanceActive ? 'Ready' : 'No AMC'}
-                    </span>
-                  </div>
-
-                  {money?.maintenance?.paid_through ? (
-                    <p className="text-[11px] text-text">
-                      Maintenance paid
-                      {money.maintenance.paid_months ? ` for ${money.maintenance.paid_months} month${money.maintenance.paid_months === 1 ? '' : 's'}` : ''}
-                      {money.maintenance.paid_from ? ` from ${formatIsoDate(money.maintenance.paid_from)}` : ''} through {formatIsoDate(money.maintenance.paid_through)}.
-                      Automatic emails stay off until {formatIsoDate(money.maintenance.next_billing_date)}.
-                    </p>
-                  ) : money?.maintenance?.billed_through ? (
                     <p className="text-[11px] text-muted">
-                      Maintenance invoiced through {formatIsoDate(money.maintenance.billed_through)}. Automatic monthly emails stay off until {formatIsoDate(money.maintenance.next_billing_date)}.
+                      Invoices are created separately. Enter the amount, type, and description on the
+                      invoice.
                     </p>
-                  ) : project.maintenance_status !== 'none' ? (
-                    <p className="text-[11px] text-muted">
-                      Monthly maintenance is set. Create a maintenance invoice for the months the client pays. Automatic emails start after that period.
-                    </p>
-                  ) : null}
-                  {money?.variance?.development?.map((msg) => (
-                    <p key={msg} className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
-                      {msg}
-                    </p>
-                  ))}
 
-                  {isFounder && (
-                    <div className="space-y-2">
-                      {!project.go_live_at && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="w-full text-xs"
-                          onClick={() => setShowGoLivePrompt(true)}
-                          disabled={project.maintenance_status === 'none'}
+                    {isFounder && (
+                      <div className="border-t border-border pt-3">
+                        <Link
+                          href={`/invoices/new?project_id=${project.id}&client_id=${project.client_id}`}
                         >
-                          Go Live
-                        </Button>
-                      )}
-                      {project.maintenance_status !== 'none' && (
-                        <Button
-                          variant={isMaintenanceActive ? 'secondary' : 'primary'}
-                          onClick={handleToggleMaintenance}
-                          isLoading={isTogglingMaintenance}
-                          className="w-full text-xs"
-                          size="sm"
+                          <Button size="sm" variant="primary" className="text-xs">
+                            <Plus className="w-3.5 h-3.5 mr-1" aria-hidden />
+                            Create invoice
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+
+                    <div className="border-t border-border pt-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-text">Go Live & AMC</p>
+                          <p className="text-[11px] text-muted mt-0.5">
+                            {project.go_live_at
+                              ? `Live since ${project.go_live_at}`
+                              : 'Emails prorata for remaining days (incl. go-live day)'}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            project.go_live_at
+                              ? 'bg-success-tint text-success'
+                              : isMaintenanceActive
+                              ? 'bg-brand-yellow-tint text-brand-text-on-yellow'
+                              : 'bg-neutral text-muted'
+                          }`}
                         >
-                          {isMaintenanceActive ? (
-                            <>
-                              <Pause className="w-3.5 h-3.5 mr-1.5" aria-hidden />
-                              Pause monthly billing
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3.5 h-3.5 mr-1.5" aria-hidden />
-                              Activate monthly billing
-                            </>
+                          {project.go_live_at ? 'Live' : isMaintenanceActive ? 'Ready' : 'No AMC'}
+                        </span>
+                      </div>
+
+                      {money?.maintenance?.paid_through ? (
+                        <p className="text-[11px] text-text">
+                          Maintenance paid
+                          {money.maintenance.paid_months
+                            ? ` for ${money.maintenance.paid_months} month${money.maintenance.paid_months === 1 ? '' : 's'}`
+                            : ''}
+                          {money.maintenance.paid_from
+                            ? ` from ${formatIsoDate(money.maintenance.paid_from)}`
+                            : ''}{' '}
+                          through {formatIsoDate(money.maintenance.paid_through)}. Automatic emails
+                          stay off until {formatIsoDate(money.maintenance.next_billing_date)}.
+                        </p>
+                      ) : money?.maintenance?.billed_through ? (
+                        <p className="text-[11px] text-muted">
+                          Maintenance invoiced through{' '}
+                          {formatIsoDate(money.maintenance.billed_through)}. Automatic monthly emails
+                          stay off until {formatIsoDate(money.maintenance.next_billing_date)}.
+                        </p>
+                      ) : project.maintenance_status !== 'none' ? (
+                        <p className="text-[11px] text-muted">
+                          Monthly maintenance is set. Create a maintenance invoice for the months the
+                          client pays. Automatic emails start after that period.
+                        </p>
+                      ) : null}
+
+                      {money?.variance?.development?.map((msg) => (
+                        <p
+                          key={msg}
+                          className="text-[11px] font-semibold text-brand-text-on-yellow bg-brand-yellow-tint border border-brand-yellow-400/40 rounded-lg px-2 py-1"
+                        >
+                          {msg}
+                        </p>
+                      ))}
+
+                      {isFounder && (
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          {!project.go_live_at && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="sm:flex-1 text-xs"
+                              onClick={() => setShowGoLivePrompt(true)}
+                              disabled={project.maintenance_status === 'none'}
+                            >
+                              Go Live
+                            </Button>
                           )}
-                        </Button>
+                          {project.maintenance_status !== 'none' && (
+                            <Button
+                              variant={isMaintenanceActive ? 'secondary' : 'primary'}
+                              onClick={handleToggleMaintenance}
+                              isLoading={isTogglingMaintenance}
+                              className="sm:flex-1 text-xs"
+                              size="sm"
+                            >
+                              {isMaintenanceActive ? (
+                                <>
+                                  <Pause className="w-3.5 h-3.5 mr-1.5" aria-hidden />
+                                  Pause monthly billing
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3.5 h-3.5 mr-1.5" aria-hidden />
+                                  Activate monthly billing
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-              </div>
-            </SectionCard>
-            )}
+                  </div>
+                </SectionCard>
+              )}
+            </div>
           </div>
-        </div>
         </div>
       )}
 
@@ -1108,25 +1395,25 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             )
           }
         >
-          <div className="divide-y divide-[#E6E8EE] -mx-5 -my-5">
+          <div className="divide-y divide-border -mx-5 -my-5">
             {invoices.length > 0 ? (
               invoices.map((inv) => (
                 <div
                   key={inv.id}
-                  className="p-4 flex items-center justify-between hover:bg-[#F6F7F9] transition-colors"
+                  className="p-4 flex items-center justify-between hover:bg-bg transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-[10px] bg-[#F6F7F9] border border-[#E6E8EE] flex items-center justify-center text-amber-600 shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-[10px] bg-brand-yellow-tint border border-border flex items-center justify-center text-brand-text-on-yellow shrink-0">
                       <FileText className="w-4 h-4" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <Link
                         href={`/invoices/${inv.id}`}
-                        className="text-xs font-bold text-[#0F172A] hover:text-[#E32B2B] transition-colors"
+                        className="text-xs font-bold text-text hover:text-brand-red-500 transition-colors"
                       >
                         {inv.invoice_number}
                       </Link>
-                      <div className="text-[11px] text-[#64748B] mt-0.5">
+                      <div className="text-[11px] text-muted mt-0.5">
                         Due: {inv.due_date}
                         {inv.id === project.advance_invoice_id
                           ? ' · Advance'
@@ -1143,7 +1430,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-bold text-text font-mono tabular-nums">
                       ₹{((inv.total_paise || 0) / 100).toLocaleString('en-IN')}
                     </span>
@@ -1171,7 +1458,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 px-2 text-xs text-[#B91C1C]"
+                        className="h-8 px-2 text-xs text-danger"
                         isLoading={deletingInvoiceId === inv.id}
                         onClick={() => handleDeleteInvoice(inv.id)}
                       >
@@ -1385,6 +1672,132 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           </Select>
         </FormField>
       </Modal>
+
+      {isEditOpen && (
+        <Modal
+          isOpen={isEditOpen}
+          onClose={() => !isSavingEdit && setIsEditOpen(false)}
+          title="Edit Project Details"
+          subtitle="Update name, scope, clients, team, duration, and commercial terms."
+          size="lg"
+          footer={
+            <div className="flex items-center justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isSavingEdit}
+                onClick={() => setIsEditOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                isLoading={isSavingEdit}
+                onClick={handleSaveProjectDetails}
+              >
+                Save changes
+              </Button>
+            </div>
+          }
+        >
+          {editError && (
+            <div className="mb-4 p-3 bg-danger-tint border border-danger/20 rounded-[10px] text-xs text-danger">
+              {editError}
+            </div>
+          )}
+          <div className="space-y-5">
+            <FormField label="Project Name" required>
+              <Input
+                required
+                placeholder="e.g. Next.js Enterprise ERP System"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Clients" required hint="First selected becomes the primary billing client.">
+              <MultiSelect
+                options={allClients.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                  subtitle: c.primary_contact_name || undefined,
+                }))}
+                selectedValues={editForm.client_ids}
+                onChange={(vals) => setEditForm({ ...editForm, client_ids: vals })}
+                placeholder="Select at least one client..."
+                emptyText="Select at least one client..."
+              />
+            </FormField>
+
+            <FormField label="Description & Scope">
+              <Textarea
+                rows={3}
+                placeholder="Project milestones, tech stack, deliverables, requirements..."
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Assign Team Members">
+              <MultiSelect
+                options={editWorkers.map((w) => ({
+                  value: w.id,
+                  label: w.full_name,
+                  subtitle: w.email,
+                }))}
+                selectedValues={editForm.worker_ids}
+                onChange={(ids) => setEditForm({ ...editForm, worker_ids: ids })}
+                placeholder="Select team members..."
+              />
+            </FormField>
+
+            <div className="rounded-[12px] border border-border bg-bg p-4 space-y-4">
+              <div>
+                <p className="text-sm font-bold text-text">Commercial terms</p>
+                <p className="text-[11px] text-muted mt-0.5">
+                  Development cost, timeline, and monthly maintenance
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <FormField label="Development days" hint="Deadline recalculates from start date.">
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="15"
+                    value={editForm.development_days}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, development_days: e.target.value })
+                    }
+                  />
+                </FormField>
+                <FormField label="Total development (₹)">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="100"
+                    placeholder="0"
+                    value={editForm.budget_rupees}
+                    onChange={(e) => setEditForm({ ...editForm, budget_rupees: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="Monthly maintenance (₹)">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="100"
+                    placeholder="0"
+                    value={editForm.maintenance_rupees}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, maintenance_rupees: e.target.value })
+                    }
+                  />
+                </FormField>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

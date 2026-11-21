@@ -58,7 +58,7 @@ export function MaintenancePanel({ engagement, mode, onEnable, onPause, onResume
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#FEF6D8] bg-[#FFFCED] p-3 text-xs text-[#5B4300]">
-        <strong>Warranty</strong> (stage 10) is free bug-fix. <strong>AMC</strong> (stage 11) is a paid monthly retainer.
+        <strong>Handover</strong> (phase 13) can include warranty. <strong>Maintenance</strong> (phase 14) is the ongoing support retainer.
       </div>
 
       {engagement.recurring ? (

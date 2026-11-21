@@ -10,8 +10,10 @@ import {
   LateFeeDecisionRequest,
   MaintenanceConfig,
   Note,
+  AuditLogEntry,
   CompanySettings,
   EmailTemplate,
+  GstRegistration,
   DashboardSummary,
   EngagementDetail,
   EngagementDocument,
@@ -145,6 +147,71 @@ async function openBinaryResponse(res: Response, fallbackName = 'file') {
     a.remove();
   }
   setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
+}
+
+/** Force a Save As download using Content-Disposition filename when present. */
+async function downloadBinaryResponse(res: Response, fallbackName = 'file') {
+  const disposition = res.headers.get('content-disposition');
+  const filename = filenameFromDisposition(disposition) || fallbackName;
+  let type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!type || type === 'application/octet-stream' || type === 'binary/octet-stream') {
+    type = mimeFromFilename(filename) || 'application/octet-stream';
+  }
+  const buffer = await res.arrayBuffer();
+  const blob = new Blob([buffer], { type });
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+}
+
+export const INVOICE_PAPER_SIZES = [
+  { value: 'a3', label: 'A3', dims: '297 × 420 mm', wMm: 297, hMm: 420 },
+  { value: 'a4', label: 'A4', dims: '210 × 297 mm', wMm: 210, hMm: 297 },
+  { value: 'a5', label: 'A5', dims: '148 × 210 mm', wMm: 148, hMm: 210 },
+  { value: 'a6', label: 'A6', dims: '105 × 148 mm', wMm: 105, hMm: 148 },
+  { value: 'letter', label: 'Letter', dims: '215.9 × 279.4 mm', wMm: 215.9, hMm: 279.4 },
+  { value: 'legal', label: 'Legal', dims: '215.9 × 355.6 mm', wMm: 215.9, hMm: 355.6 },
+  { value: 'tabloid', label: 'Tabloid', dims: '279.4 × 431.8 mm', wMm: 279.4, hMm: 431.8 },
+  { value: 'executive', label: 'Executive', dims: '184.15 × 266.7 mm', wMm: 184.15, hMm: 266.7 },
+  { value: 'b4', label: 'B4', dims: '250 × 353 mm', wMm: 250, hMm: 353 },
+  { value: 'b5', label: 'B5', dims: '176 × 250 mm', wMm: 176, hMm: 250 },
+] as const;
+
+export type InvoicePaperSize = (typeof INVOICE_PAPER_SIZES)[number]['value'];
+
+export const INVOICE_PAPER_ORIENTATIONS = [
+  { value: 'portrait', label: 'Portrait' },
+  { value: 'landscape', label: 'Landscape' },
+] as const;
+
+export type InvoicePaperOrientation =
+  (typeof INVOICE_PAPER_ORIENTATIONS)[number]['value'];
+
+export function getInvoicePaperSize(value?: string | null) {
+  const key = (value || 'a4').toLowerCase() as InvoicePaperSize;
+  return INVOICE_PAPER_SIZES.find((p) => p.value === key) || INVOICE_PAPER_SIZES[1];
+}
+
+/** Physical sheet mm for size + orientation (landscape swaps edges). */
+export function getInvoicePaperDimsMm(
+  paperSize?: InvoicePaperSize | string | null,
+  orientation: InvoicePaperOrientation | string = 'portrait'
+) {
+  const paper = getInvoicePaperSize(paperSize);
+  const landscape = String(orientation || 'portrait').toLowerCase() === 'landscape';
+  const wMm = landscape ? paper.hMm : paper.wMm;
+  const hMm = landscape ? paper.wMm : paper.hMm;
+  const dims = `${formatMm(wMm)} × ${formatMm(hMm)} mm`;
+  return { paper, wMm, hMm, dims, landscape };
+}
+
+function formatMm(n: number) {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
 }
 
 export async function apiClient<T>(
@@ -328,6 +395,12 @@ export const clientsApi = {
     apiClient<{ message: string }>(`/api/v1/clients/${id}`, {
       method: 'DELETE',
     }),
+
+  deactivate: (id: string) =>
+    apiClient<Client>(`/api/v1/clients/${id}/deactivate`, { method: 'POST' }),
+
+  activate: (id: string) =>
+    apiClient<Client>(`/api/v1/clients/${id}/activate`, { method: 'POST' }),
 };
 
 export const leadsApi = {
@@ -534,10 +607,35 @@ export const projectsApi = {
       project?: Project;
     }>(`/api/v1/projects/${id}/invoices/balance`, { method: 'POST' }),
 
-  update: (id: string, data: Partial<Project> & { worker_ids?: string[] }) =>
+  update: (
+    id: string,
+    data: Partial<Project> & {
+      worker_ids?: string[];
+      status_reason?: string;
+      reopen_reason?: string;
+      force_complete?: boolean;
+      force_complete_reason?: string;
+    }
+  ) =>
     apiClient<Project>(`/api/v1/projects/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+
+  markDevelopmentCompleted: (id: string) =>
+    apiClient<Project>(`/api/v1/projects/${id}/milestones/development-completed`, {
+      method: 'POST',
+    }),
+
+  markClientAccepted: (id: string) =>
+    apiClient<Project>(`/api/v1/projects/${id}/milestones/client-accepted`, {
+      method: 'POST',
+    }),
+
+  markProjectClosed: (id: string, reason?: string) =>
+    apiClient<Project>(`/api/v1/projects/${id}/milestones/close`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
     }),
 
   delete: (id: string) =>
@@ -562,12 +660,31 @@ export const projectsApi = {
   regressDelivery: (id: string) =>
     apiClient<ProjectDeliveryDetail>(`/api/v1/projects/${id}/delivery/regress`, { method: 'POST' }),
 
+  updatePhaseNote: (id: string, stageNumber: number, body: string | null) =>
+    apiClient<ProjectDeliveryDetail>(
+      `/api/v1/projects/${id}/delivery/phases/${stageNumber}/note`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ body }),
+      }
+    ),
+
   listFeatures: (id: string) =>
     apiClient<ProjectFeature[]>(`/api/v1/projects/${id}/features`, { cache: 'no-store' }),
 
   createFeature: (
     id: string,
-    data: { title: string; description?: string; status?: string; quoted_paise?: number }
+    data: {
+      title: string;
+      description?: string;
+      request_type?: string;
+      expected_functionality?: string;
+      priority?: string;
+      expected_date?: string | null;
+      acceptance_criteria?: string;
+      status?: string;
+      quoted_paise?: number;
+    }
   ) =>
     apiClient<ProjectFeature>(`/api/v1/projects/${id}/features`, {
       method: 'POST',
@@ -577,7 +694,20 @@ export const projectsApi = {
   updateFeature: (
     id: string,
     featureId: string,
-    data: Partial<{ title: string; description: string; status: string; quoted_paise: number }>
+    data: Partial<{
+      title: string;
+      description: string;
+      business_purpose: string;
+      request_type: string;
+      expected_functionality: string;
+      priority: string;
+      expected_date: string | null;
+      acceptance_criteria: string;
+      status: string;
+      status_reason: string;
+      quoted_paise: number;
+      is_billable: boolean;
+    }>
   ) =>
     apiClient<ProjectFeature>(`/api/v1/projects/${id}/features/${featureId}`, {
       method: 'PATCH',
@@ -598,6 +728,19 @@ export const projectsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  uploadFeatureAttachment: (id: string, featureId: string, file: File, title?: string) => {
+    const body = new FormData();
+    body.append('file', file);
+    if (title) body.append('title', title);
+    return apiClient<ProjectFeatureDoc>(
+      `/api/v1/projects/${id}/features/${featureId}/attachments`,
+      { method: 'POST', body }
+    );
+  },
+
+  featureAttachmentUrl: (id: string, featureId: string, docId: string) =>
+    `${getApiBaseUrl()}/api/v1/projects/${id}/features/${featureId}/attachments/${docId}/file`,
 
   deleteFeatureDoc: (id: string, featureId: string, docId: string) =>
     apiClient<{ message: string }>(`/api/v1/projects/${id}/features/${featureId}/docs/${docId}`, {
@@ -690,9 +833,64 @@ export const invoicesApi = {
       method: 'POST',
     }),
 
+  rejectPaymentProof: (id: string, reason: string) =>
+    apiClient<Invoice>(`/api/v1/invoices/${id}/reject-payment-proof`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  listPayments: (id: string) =>
+    apiClient<
+      Array<{
+        id: string;
+        amount_paise: number;
+        method?: string | null;
+        reference?: string | null;
+        paid_at?: string | null;
+        note?: string | null;
+        status: string;
+        rejection_reason?: string | null;
+      }>
+    >(`/api/v1/invoices/${id}/payments`, { cache: 'no-store' }),
+
+  createPayment: (
+    id: string,
+    data: {
+      amount_paise: number;
+      method?: string;
+      reference?: string;
+      note?: string;
+      mark_verified?: boolean;
+    }
+  ) =>
+    apiClient<Invoice>(`/api/v1/invoices/${id}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  verifyPaymentRow: (id: string, paymentId: string) =>
+    apiClient<Invoice>(`/api/v1/invoices/${id}/payments/${paymentId}/verify`, {
+      method: 'POST',
+    }),
+
+  rejectPaymentRow: (id: string, paymentId: string, reason: string) =>
+    apiClient<Invoice>(`/api/v1/invoices/${id}/payments/${paymentId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
   cancel: (id: string) =>
     apiClient<Invoice>(`/api/v1/invoices/${id}/cancel`, {
       method: 'POST',
+    }),
+
+  debitNote: (
+    id: string,
+    data: { amount_paise: number; reason?: string; description?: string }
+  ) =>
+    apiClient<Invoice>(`/api/v1/invoices/${id}/debit-note`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   creditNote: (id: string, data?: { reason?: string; amount_paise?: number }) =>
@@ -701,8 +899,67 @@ export const invoicesApi = {
       body: JSON.stringify(data || {}),
     }),
 
-  downloadPdfUrl: (id: string) =>
-    `${API_BASE_URL}/api/v1/invoices/${id}/pdf`,
+  downloadPdfUrl: (
+    id: string,
+    paperSize: InvoicePaperSize | string = 'a4',
+    orientation: InvoicePaperOrientation | string = 'portrait'
+  ) => {
+    const params = new URLSearchParams({
+      paper_size: paperSize || 'a4',
+      orientation: orientation || 'portrait',
+      download: 'true',
+    });
+    return `${getApiBaseUrl()}/api/v1/invoices/${id}/pdf?${params.toString()}`;
+  },
+
+  /** Authenticated PDF download named `{invoice_number}.pdf`. */
+  downloadPdf: async (
+    id: string,
+    opts?: {
+      paperSize?: InvoicePaperSize | string;
+      orientation?: InvoicePaperOrientation | string;
+      filename?: string;
+    }
+  ) => {
+    const paperSize = opts?.paperSize || 'a4';
+    const orientation = opts?.orientation || 'portrait';
+    const params = new URLSearchParams({
+      paper_size: paperSize,
+      orientation,
+      download: 'true',
+    });
+    const headers = new Headers();
+    const token = getAuthToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const res = await fetch(
+      `${getApiBaseUrl()}/api/v1/invoices/${id}/pdf?${params.toString()}`,
+      { headers, credentials: 'include' }
+    );
+    if (!res.ok) throw new ApiError(res.status, 'Failed to download invoice PDF');
+    await downloadBinaryResponse(res, opts?.filename || 'invoice.pdf');
+  },
+
+  /** Authenticated PDF preview in a new tab. */
+  viewPdf: async (
+    id: string,
+    paperSize: InvoicePaperSize | string = 'a4',
+    orientation: InvoicePaperOrientation | string = 'portrait'
+  ) => {
+    const params = new URLSearchParams({
+      paper_size: paperSize || 'a4',
+      orientation: orientation || 'portrait',
+      download: 'false',
+    });
+    const headers = new Headers();
+    const token = getAuthToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const res = await fetch(
+      `${getApiBaseUrl()}/api/v1/invoices/${id}/pdf?${params.toString()}`,
+      { headers, credentials: 'include' }
+    );
+    if (!res.ok) throw new ApiError(res.status, 'Failed to open invoice PDF');
+    await openBinaryResponse(res, 'invoice.pdf');
+  },
 
   // Recurring schedules
   listRecurring: () =>
@@ -786,6 +1043,37 @@ export const settingsApi = {
     });
   },
 
+  uploadLogo: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient<CompanySettings>('/api/v1/settings/logo', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  listGstRegistrations: () =>
+    apiClient<GstRegistration[]>('/api/v1/settings/gst-registrations', {
+      cache: 'no-store',
+    }),
+
+  createGstRegistration: (data: Omit<GstRegistration, 'id'>) =>
+    apiClient<GstRegistration>('/api/v1/settings/gst-registrations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateGstRegistration: (id: string, data: Partial<GstRegistration>) =>
+    apiClient<GstRegistration>(`/api/v1/settings/gst-registrations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteGstRegistration: (id: string) =>
+    apiClient<{ message: string }>(`/api/v1/settings/gst-registrations/${id}`, {
+      method: 'DELETE',
+    }),
+
   testEmail: (toEmail: string) =>
     apiClient<{ message: string }>('/api/v1/settings/test-email', {
       method: 'POST',
@@ -800,6 +1088,27 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+};
+
+export const auditLogsApi = {
+  list: (params?: {
+    entity_type?: string;
+    entity_id?: string;
+    action?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.entity_type) q.set('entity_type', params.entity_type);
+    if (params?.entity_id) q.set('entity_id', params.entity_id);
+    if (params?.action) q.set('action', params.action);
+    if (params?.limit != null) q.set('limit', String(params.limit));
+    if (params?.offset != null) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return apiClient<AuditLogEntry[]>(`/api/v1/audit-logs${qs ? `?${qs}` : ''}`, {
+      cache: 'no-store',
+    });
+  },
 };
 
 export const engagementsApi = {

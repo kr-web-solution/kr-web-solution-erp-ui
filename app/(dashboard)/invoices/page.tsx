@@ -34,6 +34,7 @@ import { DataTable, Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Switch } from '@/components/ui/Switch';
+import { canSoftEditInvoice, invoiceTypeLabel } from '@/lib/invoices/labels';
 import { toast } from 'sonner';
 
 export default function InvoicesListPage() {
@@ -106,11 +107,18 @@ export default function InvoicesListPage() {
     }
   };
 
-  const handleDeleteInvoice = async (id: string, e: React.MouseEvent) => {
+  const deleteBlockedMsg =
+    'You can only delete the latest invoice in this number series. If you still need to stop this one, cancel it — the number and details stay frozen — then create a new invoice with the same details.';
+
+  const handleDeleteInvoice = async (row: Invoice, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Delete this invoice? This cannot be undone.')) return;
+    if (row.can_delete !== true) {
+      toast.error(deleteBlockedMsg);
+      return;
+    }
+    if (!confirm('Delete this invoice permanently? This cannot be undone.')) return;
     try {
-      await invoicesApi.delete(id);
+      await invoicesApi.delete(row.id);
       toast.success('Invoice deleted');
       fetchInvoices();
     } catch (err: any) {
@@ -186,8 +194,16 @@ export default function InvoicesListPage() {
             ) : (
               <span>Standard Billing</span>
             )}
-            {row.invoice_type === 'late_fee' && (
-              <span className="text-[#B91C1C] font-semibold">· Late Fee</span>
+            {invoiceTypeLabel(row.invoice_type) && (
+              <span
+                className={
+                  row.invoice_type === 'late_fee'
+                    ? 'text-[#B91C1C] font-semibold'
+                    : 'text-[#64748B] font-medium'
+                }
+              >
+                · {invoiceTypeLabel(row.invoice_type)}
+              </span>
             )}
           </div>
         </div>
@@ -291,9 +307,14 @@ export default function InvoicesListPage() {
             </Button>
           )}
 
-          {row.status !== 'paid' && isFounder && (
+          {isFounder && canSoftEditInvoice(row) && (
             <Link href={`/invoices/${row.id}/edit`} onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" title="Edit">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                title={row.document_locked ? 'Adjust notes / due date' : 'Edit'}
+              >
                 <Pencil className="w-3.5 h-3.5" />
               </Button>
             </Link>
@@ -316,17 +337,28 @@ export default function InvoicesListPage() {
             </Button>
           </Link>
 
-          {row.status !== 'paid' && isFounder && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs text-[#B91C1C]"
-              title="Delete"
-              onClick={(e) => handleDeleteInvoice(row.id, e)}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
-          )}
+          {row.status !== 'paid' &&
+            row.status !== 'cancelled' &&
+            row.status !== 'void' &&
+            isFounder && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-8 px-2 text-xs ${
+                  row.can_delete === true ? 'text-[#B91C1C]' : 'text-[#94A3B8]'
+                }`}
+                title={
+                  row.can_delete === true
+                    ? 'Delete'
+                    : 'Cannot delete — cancel this invoice instead, then create a new one'
+                }
+                onClick={(e) => handleDeleteInvoice(row, e)}
+              >
+                <Trash2
+                  className={`w-3.5 h-3.5 ${row.can_delete === true ? '' : 'opacity-40'}`}
+                />
+              </Button>
+            )}
         </div>
       ),
     },

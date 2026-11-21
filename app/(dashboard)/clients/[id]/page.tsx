@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { clientsApi, projectsApi, invoicesApi, notesApi } from '@/lib/api/client';
-import { Client, Project, Invoice, Note } from '@/lib/types';
+import { Client, Project, Invoice, Note, ClientFormValues, emptyClientForm } from '@/lib/types';
 import { isPrivileged } from '@/lib/roles';
 import {
   ArrowLeft,
@@ -25,6 +25,7 @@ import {
   FolderKanban,
   Send,
   User as UserIcon,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -37,7 +38,30 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageSkeleton } from '@/components/ui/Skeleton';
 import { Textarea } from '@/components/ui/Textarea';
+import { Modal } from '@/components/ui/Modal';
+import { ClientFormFields } from '@/components/clients/ClientFormFields';
 import { toast } from 'sonner';
+
+function clientToForm(c: Client): ClientFormValues {
+  return {
+    name: c.name || '',
+    primary_contact_name: c.primary_contact_name || '',
+    designation: c.designation || '',
+    contact_email: c.contact_email || '',
+    contact_phone: c.contact_phone || '',
+    email: c.email || '',
+    phone: c.phone || '',
+    website: c.website || '',
+    address: c.address || '',
+    city: c.city || '',
+    state: c.state || '',
+    pincode: c.pincode || '',
+    gstin: c.gstin || '',
+    pan: c.pan || '',
+    state_code: c.state_code || '',
+    notes: c.notes || '',
+  };
+}
 
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -56,6 +80,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [showDeletePrompt, setShowDeletePrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<ClientFormValues>(emptyClientForm());
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const fetchClientDetails = async () => {
     setIsLoading(true);
@@ -118,6 +146,32 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       router.push('/clients');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to delete client.');
+    }
+  };
+
+  const openEditClient = () => {
+    if (!client) return;
+    setEditForm(clientToForm(client));
+    setEditError(null);
+    setIsEditOpen(true);
+  };
+
+  const handleSaveClient = async () => {
+    if (!editForm.name.trim()) {
+      setEditError('Company name is required.');
+      return;
+    }
+    setEditError(null);
+    setIsSavingEdit(true);
+    try {
+      const updated = await clientsApi.update(clientId, editForm);
+      setClient(updated);
+      setIsEditOpen(false);
+      toast.success('Client details updated');
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to update client.');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -214,15 +268,49 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
         <div className="flex items-center gap-2.5 shrink-0">
           {isFounder && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setShowDeletePrompt(true)}
-              className="h-9 px-3"
-              title="Delete client"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={openEditClient}
+                className="h-9"
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                Edit details
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-9"
+                onClick={async () => {
+                  try {
+                    const updated =
+                      client.is_active === false
+                        ? await clientsApi.activate(clientId)
+                        : await clientsApi.deactivate(clientId);
+                    setClient(updated);
+                    toast.success(
+                      updated.is_active === false
+                        ? 'Client deactivated'
+                        : 'Client activated'
+                    );
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Failed to update client status');
+                  }
+                }}
+              >
+                {client.is_active === false ? 'Activate' : 'Deactivate'}
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setShowDeletePrompt(true)}
+                className="h-9 px-3"
+                title="Delete client"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -288,6 +376,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               title="Billing & Headquarters Information"
               subtitle="Registered office address and corporate data"
               icon={<Building2 className="w-4 h-4" />}
+              headerSlot={
+                isFounder ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    onClick={openEditClient}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1" aria-hidden />
+                    Edit
+                  </Button>
+                ) : undefined
+              }
             >
               <div className="space-y-4 text-xs">
                 <div className="p-4 bg-[#F6F7F9] border border-[#E6E8EE] rounded-2xl space-y-1">
@@ -524,6 +625,44 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             </div>
           </SectionCard>
         </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {isEditOpen && (
+        <Modal
+          isOpen={isEditOpen}
+          onClose={() => !isSavingEdit && setIsEditOpen(false)}
+          title="Edit Client Details"
+          subtitle="Update company, billing, and contact information."
+          size="lg"
+          footer={
+            <div className="flex items-center justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isSavingEdit}
+                onClick={() => setIsEditOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                isLoading={isSavingEdit}
+                onClick={handleSaveClient}
+              >
+                Save changes
+              </Button>
+            </div>
+          }
+        >
+          {editError && (
+            <div className="mb-4 p-3 bg-[#FDECEC] border border-rose-200 rounded-[10px] text-xs text-[#B91C1C]">
+              {editError}
+            </div>
+          )}
+          <ClientFormFields value={editForm} onChange={setEditForm} />
+        </Modal>
       )}
 
       {/* Delete Confirmation Dialog */}

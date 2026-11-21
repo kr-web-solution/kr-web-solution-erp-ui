@@ -245,17 +245,124 @@ export function FormPageSkeleton({ className }: { className?: string }) {
   );
 }
 
+export function InvoiceDetailSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading invoice"
+      aria-live="polite"
+      className={cn('w-full min-w-0 space-y-5 pb-12', className)}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2.5">
+          <Skeleton className="h-3 w-36" />
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-64 max-w-full" />
+            <Skeleton className="h-6 w-16 rounded-full" />
+          </div>
+          <Skeleton className="h-4 w-80 max-w-full" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-28 rounded-lg" />
+          <Skeleton className="h-9 w-9 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
+        <div className="xl:col-span-8">
+          <div className="overflow-hidden rounded-2xl border border-[#E6E8EE] bg-[#F3F4F7]">
+            <div className="flex flex-col gap-3 border-b border-[#E6E8EE] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-9 w-44 rounded-lg" />
+                <Skeleton className="h-6 w-36 rounded-full" />
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-32 rounded-lg" />
+                <Skeleton className="h-9 w-28 rounded-lg" />
+              </div>
+            </div>
+            <div className="flex justify-center p-6">
+              <div className="w-full max-w-[560px] space-y-5 rounded-sm bg-white p-8 shadow-sm ring-1 ring-black/5">
+                <div className="flex justify-between gap-6">
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-12 w-12 rounded-md" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-3 w-48" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-3 w-40" />
+                    <Skeleton className="h-3 w-44" />
+                  </div>
+                  <div className="space-y-2 text-right">
+                    <Skeleton className="ml-auto h-7 w-28" />
+                    <Skeleton className="ml-auto h-3 w-36" />
+                    <Skeleton className="ml-auto h-3 w-32" />
+                    <Skeleton className="ml-auto h-6 w-16 rounded" />
+                  </div>
+                </div>
+                <Skeleton className="h-px w-full" />
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-36" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-3 w-40" />
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-3 w-36" />
+                  </div>
+                </div>
+                <div className="space-y-2 pt-2">
+                  <Skeleton className="h-8 w-full rounded" />
+                  <Skeleton className="h-10 w-full rounded" />
+                  <Skeleton className="h-10 w-full rounded" />
+                  <Skeleton className="h-10 w-full rounded" />
+                </div>
+                <div className="flex justify-between gap-6 pt-2">
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-3 w-44" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <div className="w-40 space-y-2">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-5 w-full" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 xl:col-span-4">
+          <PanelSkeleton />
+          <PanelSkeleton />
+          <CardSkeleton />
+        </div>
+      </div>
+      <span className="sr-only">Loading invoice</span>
+    </div>
+  );
+}
+
 export function PageSkeleton({
   variant = 'list',
   className,
   cols = 5,
   showKpis = false,
 }: {
-  variant?: 'list' | 'detail' | 'form' | 'dashboard' | 'panel';
+  variant?: 'list' | 'detail' | 'form' | 'dashboard' | 'panel' | 'invoice';
   className?: string;
   cols?: number;
   showKpis?: boolean;
 }) {
+  if (variant === 'invoice') return <InvoiceDetailSkeleton className={className} />;
   if (variant === 'detail') return <DetailPageSkeleton className={className} />;
   if (variant === 'form') return <FormPageSkeleton className={className} />;
   if (variant === 'panel') return <PanelSkeleton className={className} />;

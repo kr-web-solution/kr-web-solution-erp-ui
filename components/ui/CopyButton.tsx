@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { CheckIcon, CopyIcon } from '@/components/icons';
 
 export interface CopyButtonProps {
   value: string;
@@ -41,9 +41,9 @@ export function CopyButton({
       className={`inline-flex items-center gap-1 p-1 text-[#64748B] hover:text-[#0F172A] hover:bg-[#F6F7F9] rounded-md transition-colors cursor-pointer ${className}`}
     >
       {copied ? (
-        <Check className="w-3.5 h-3.5 text-[#16A34A] stroke-[2.5]" />
+        <CheckIcon size={14} className="text-[#16A34A]" />
       ) : (
-        <Copy className="w-3.5 h-3.5" />
+        <CopyIcon size={14} />
       )}
       {label && <span className="text-xs font-mono">{label}</span>}
     </button>

@@ -305,12 +305,12 @@ export function StageOnboarding({
           title="Hand off to delivery"
           hint={
             !hasProject
-              ? 'Convert to project first — then complete onboarding.'
+              ? 'Convert to project first — then complete requirement analysis.'
               : allDone
-              ? 'Completes onboarding and enters Project delivery (06 Design & Dev).'
-              : 'Project exists — finish checklist, then complete onboarding.'
+              ? 'Completes handoff into Project delivery (Requirement Analysis → SDLC).'
+              : 'Project exists — finish checklist, then complete handoff.'
           }
-          ctaLabel="Complete onboarding"
+          ctaLabel="Enter delivery"
           disabled={!hasProject}
           busy={working}
           onAdvance={onAdvance}

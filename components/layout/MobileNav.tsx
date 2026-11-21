@@ -3,7 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, X, LogOut } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
+import { LogoutIcon, XIcon } from '@/components/icons';
 import { useAuth } from '@/lib/auth/AuthContext';
 import {
   NAV_SECTIONS,
@@ -119,7 +120,7 @@ export function MobileNav({ isOpen, onClose, userRole = 'founder_ceo' }: MobileN
             className="shrink-0 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-bg hover:text-text"
             aria-label="Close menu"
           >
-            <X className="h-4 w-4" />
+            <XIcon size={16} />
           </button>
         </div>
 
@@ -176,7 +177,7 @@ export function MobileNav({ isOpen, onClose, userRole = 'founder_ceo' }: MobileN
             className="cursor-pointer rounded-lg p-1.5 text-muted hover:bg-brand-red-tint hover:text-brand-red-500"
             title="Logout"
           >
-            <LogOut className="h-4 w-4" aria-hidden />
+            <LogoutIcon size={16} aria-hidden />
           </button>
         </div>
       </div>
